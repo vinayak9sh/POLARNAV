@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+.cdsapirc
+
+# VS Code
+.vscode/
+
+# Large raw datasets
+data/raw/
+data/**/*.nc
+data/**/*.nc4
+data/**/*.zip
+data/**/*.csv
+
+# Large generated/model artifacts
+models/**/*.npz
+models/**/*.npy
+
+# Python/package caches
+*.egg-info/
+pip-wheel-metadata/
+
+# Node
+frontend-react/node_modules/
+frontend-react/dist/
+frontend-react/.vite/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Large processed scientific datasets
+data/processed/*.npz
+data/processed/**/*.npz
+data/processed/**/*.nc
+
+# Trained model binaries
+models/**/*.joblib
+models/*.joblib
+
+# Local development inspection script
+check_icebergs.py

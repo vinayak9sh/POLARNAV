@@ -1,0 +1,18 @@
+{
+    "forecast_input_date": "2025-06-29",
+    "prediction_date": "2025-06-30",
+    "model": "module1_30day_mvp_random_forest",
+    "features": [
+        "lat",
+        "lon",
+        "sea_ice_concentration",
+        "sic_lag1",
+        "sic_lag2"
+    ],
+    "predicted_sic_min": 0.0,
+    "predicted_sic_max": 99.94859313964844,
+    "actual_sic_min": 0.0,
+    "actual_sic_max": 100.0,
+    "MAE_percent": 1.8998826742172241,
+    "valid_cells": 51696
+}

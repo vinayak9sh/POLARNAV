@@ -1,0 +1,2059 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
+
+<title>Antarctic Navigation</title>
+
+<link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+
+<style>
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+}
+
+#map {
+    width: 100%;
+    height: 100vh;
+}
+
+#panel {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 1000;
+
+    width: 330px;
+
+    background: white;
+    padding: 16px;
+
+    border-radius: 10px;
+
+    box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+}
+
+h2 {
+    margin-top: 0;
+}
+
+input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px;
+    margin: 4px 0 10px;
+}
+
+button {
+    width: 100%;
+    padding: 9px;
+    margin-top: 5px;
+    cursor: pointer;
+}
+
+.mode-buttons {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.mode-buttons button {
+    margin: 0;
+}
+
+.active-mode {
+    font-weight: bold;
+}
+
+#selectionStatus {
+    margin-top: 10px;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+#result {
+    margin-top: 14px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+#legend {
+    margin-top: 14px;
+    font-size: 13px;
+}
+
+.legend-row {
+    margin: 4px 0;
+}
+
+.legend-box {
+    width: 14px;
+    height: 14px;
+    display: inline-block;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="panel">
+
+<h2>Antarctic Navigation</h2>
+
+<label>Forecast Input Date</label>
+
+<select id="forecastDate" onchange="updateForecast()">
+</select>
+
+<label for="vesselProfile">
+    Vessel Profile
+</label>
+
+<select
+    id="vesselProfile"
+    name="vesselProfile"
+    style="
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px;
+        margin: 4px 0 10px;
+        background: white;
+        color: black;
+        border: 1px solid #888;
+        border-radius: 4px;
+        cursor: pointer;
+        display: block;
+        position: relative;
+        z-index: 1002;
+    "
+>
+    <option value="conservative">
+        Conservative
+    </option>
+
+    <option value="standard" selected>
+        Standard
+    </option>
+
+    <option value="ice_capable">
+        Ice Capable
+    </option>
+</select>
+
+<label>Start Latitude</label>
+<input id="startLat" value="-59.93">
+
+<label>Start Longitude</label>
+<input id="startLon" value="49.89">
+
+<button onclick="enableStartSelection()">
+📍 Set Start From Map
+</button>
+
+<label>Destination Latitude</label>
+<input id="goalLat" value="-59.93">
+
+<label>Destination Longitude</label>
+<input id="goalLon" value="68.56">
+
+<button onclick="enableGoalSelection()">
+🎯 Set Destination From Map
+</button>
+
+<div id="selectionStatus">
+Select coordinates manually or from the map.
+</div>
+
+<button onclick="calculateRoute()">
+Calculate Route
+</button>
+
+<button
+    id="progressButton"
+    onclick="simulateVesselProgress()"
+    disabled
+    style="
+        margin-top: 6px;
+        background: #2c7fb8;
+        color: white;
+        font-weight: bold;
+    "
+>
+🚢 Simulate Vessel Progress
+</button>
+
+<button
+    id="replanButton"
+    onclick="replanRoute()"
+    disabled
+    style="
+        margin-top: 6px;
+        background: #8e44ad;
+        color: white;
+        font-weight: bold;
+    "
+>
+🔄 Replan Route
+</button>
+
+<div id="replanStatus"
+     style="
+         margin-top: 6px;
+         font-size: 12px;
+         line-height: 1.4;
+     ">
+No replanning active.
+</div>
+
+<div class="mode-buttons">
+
+<button
+    id="sicButton"
+    onclick="showSIC()"
+    class="active-mode">
+    Predicted SIC
+</button>
+
+<button
+    id="riskButton"
+    onclick="showRisk()">
+    Risk Level
+</button>
+
+<button
+    id="icebergButton"
+    onclick="showIcebergs()">
+    Icebergs
+</button>
+
+</div>
+
+<div id="result">
+Loading prediction...
+</div>
+
+<div id="legend">
+
+<b id="legendTitle">Predicted SIC</b>
+
+<div id="sicLegend">
+
+<div class="legend-row">
+0% → Open Water
+</div>
+
+<div class="legend-row">
+100% → Highest Ice
+</div>
+
+</div>
+
+<div id="icebergLegend" style="display:none;">
+
+<div class="legend-row">
+<span class="legend-box"
+      style="background:#8e44ad"></span>
+ML prediction
+</div>
+
+<div class="legend-row">
+<span class="legend-box"
+      style="background:#3498db"></span>
+Persistence estimate
+</div>
+
+<div class="legend-row">
+31 represented tracks / 127 total
+</div>
+
+</div>
+
+<div id="riskLegend" style="display:none;">
+
+<div class="legend-row">
+<span class="legend-box"
+      style="background:#2ca25f"></span>
+LOW
+</div>
+
+<div class="legend-row">
+<span class="legend-box"
+      style="background:#f1c40f"></span>
+MODERATE
+</div>
+
+<div class="legend-row">
+<span class="legend-box"
+      style="background:#e67e22"></span>
+HIGH
+</div>
+
+<div class="legend-row">
+<span class="legend-box"
+      style="background:#d73027"></span>
+SEVERE
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+<script>
+
+const API_URL = "http://127.0.0.1:8000";
+
+function populateForecastDates() {
+    const select =
+        document.getElementById("forecastDate");
+
+    const start = new Date(
+        Date.UTC(2025, 0, 1)
+    );
+
+    const end = new Date(
+        Date.UTC(2026, 6, 5)
+    );
+
+    for (
+        let d = new Date(end);
+        d >= start;
+        d.setUTCDate(d.getUTCDate() - 1)
+    ) {
+        const date =
+            d.toISOString().slice(0, 10);
+
+        // Skip dates affected by the known data gap
+        if (
+            date === "2025-03-18" ||
+            date === "2025-03-19"
+        ) {
+            continue;
+        }
+
+        const option =
+            document.createElement("option");
+
+        option.value = date;
+
+        const displayDate =
+            d.toLocaleDateString(
+                "en-GB",
+                {
+                    timeZone: "UTC",
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric"
+                }
+            );
+
+        option.textContent =
+            `${displayDate} → next-day prediction`;
+
+        select.appendChild(option);
+    }
+
+    select.value = "2026-01-05";
+}
+
+const map = L.map("map").setView(
+    [-70, 0],
+    3
+);
+
+L.tileLayer(
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+        attribution:
+            "&copy; OpenStreetMap contributors"
+    }
+).addTo(map);
+
+
+const canvasRenderer =
+    L.canvas({ padding: 0.5 });
+
+
+let sicHeatLayer = null;
+let riskLayer = null;
+let icebergLayer = null;
+
+let routeLine = null;
+let startMarker = null;
+let goalMarker = null;
+
+// ------------------------------------------------
+// Module 4 — Dynamic replanning state
+// ------------------------------------------------
+
+let vesselMarker = null;
+let currentVesselPosition = null;
+let lastRouteData = null;
+
+let selectionMode = null;
+
+
+// ------------------------------------------------
+// Risk colour
+// ------------------------------------------------
+
+function riskColor(code) {
+
+    if (code === 0)
+        return "#2ca25f";
+
+    if (code === 1)
+        return "#f1c40f";
+
+    if (code === 2)
+        return "#e67e22";
+
+    if (code === 3)
+        return "#d73027";
+
+    return "#808080";
+}
+
+
+function riskLabel(code) {
+
+    if (code === 0)
+        return "LOW";
+
+    if (code === 1)
+        return "MODERATE";
+
+    if (code === 2)
+        return "HIGH";
+
+    if (code === 3)
+        return "SEVERE";
+
+    return "INVALID";
+}
+
+
+// ------------------------------------------------
+// Load risk grid
+// ------------------------------------------------
+
+async function loadRiskGrid() {
+
+    try {
+
+        const response =
+            await fetch(
+                API_URL + "/risk-grid"
+            );
+
+        if (!response.ok)
+            throw new Error(
+                "Risk-grid request failed."
+            );
+
+        const data =
+            await response.json();
+
+
+        // ----------------------------------------
+        // Continuous SIC heatmap
+        // ----------------------------------------
+
+        const heatPoints =
+            data.points.map(
+                point => [
+                    point.latitude,
+                    point.longitude,
+                    Math.max(
+                        0.01,
+                        point.sic / 100
+                    )
+                ]
+            );
+
+
+        sicHeatLayer =
+            L.heatLayer(
+                heatPoints,
+                {
+                    radius: 22,
+                    blur: 18,
+                    maxZoom: 6,
+                    minOpacity: 0.25
+                }
+            );
+
+
+        sicHeatLayer.addTo(map);
+
+
+        // ----------------------------------------
+        // Risk layer
+        // ----------------------------------------
+
+        riskLayer =
+            L.layerGroup();
+
+
+        data.points.forEach(
+            point => {
+
+                const circle =
+                    L.circleMarker(
+                        [
+                            point.latitude,
+                            point.longitude
+                        ],
+                        {
+                            renderer:
+                                canvasRenderer,
+
+                            radius: 5,
+
+                            stroke: false,
+
+                            fillColor:
+                                riskColor(
+                                    point.risk_code
+                                ),
+
+                            fillOpacity: 0.78
+                        }
+                    );
+
+
+                circle.bindPopup(
+                    `
+                    <b>Sea-Ice Prediction</b><br>
+                    SIC:
+                    ${point.sic.toFixed(2)}%<br>
+                    Risk:
+                    ${riskLabel(
+                        point.risk_code
+                    )}
+                    `
+                );
+
+
+                riskLayer.addLayer(circle);
+
+            }
+        );
+
+
+        document.getElementById(
+            "result"
+        ).innerHTML =
+            `
+            <b>Prediction loaded</b><br>
+            ${data.points.length}
+            spatial cells available.
+            `;
+
+
+    } catch(error) {
+
+        console.error(error);
+
+        document.getElementById(
+            "result"
+        ).innerHTML =
+            `<b>Prediction error:</b>
+             ${error.message}`;
+
+    }
+}
+
+
+// ------------------------------------------------
+// Iceberg display
+// ------------------------------------------------
+
+function icebergMarkerColor(method) {
+    if (method === "ml_random_forest") {
+        return "#8e44ad";
+    }
+
+    return "#3498db";
+}
+
+
+function icebergConfidenceLabel(prediction) {
+    if (prediction.confidence) {
+        return prediction.confidence.toUpperCase();
+    }
+
+    return prediction.prediction_method === "ml_random_forest"
+        ? "HIGH"
+        : "LOW";
+}
+
+
+function rebuildIcebergLayer(data) {
+
+    if (icebergLayer &&
+        map.hasLayer(icebergLayer)) {
+        map.removeLayer(icebergLayer);
+    }
+
+    icebergLayer = L.layerGroup();
+
+    data.predicted_icebergs.forEach(
+        prediction => {
+
+            if (
+                !Number.isFinite(
+                    prediction.predicted_latitude
+                ) ||
+                !Number.isFinite(
+                    prediction.predicted_longitude
+                )
+            ) {
+                return;
+            }
+
+            const method =
+                prediction.prediction_method;
+
+            const color =
+                icebergMarkerColor(method);
+
+            const confidence =
+                icebergConfidenceLabel(
+                    prediction
+                );
+
+            const marker =
+                L.circleMarker(
+                    [
+                        prediction.predicted_latitude,
+                        prediction.predicted_longitude
+                    ],
+                    {
+                        renderer:
+                            canvasRenderer,
+
+                        radius:
+                            method === "ml_random_forest"
+                                ? 7
+                                : 5,
+
+                        color: color,
+
+                        weight: 1.5,
+
+                        fillColor: color,
+
+                        fillOpacity: 0.9
+                    }
+                );
+
+            marker.bindPopup(`
+                <b>Predicted Iceberg</b><br>
+                ID:
+                ${prediction.iceberg_id}<br>
+
+                Prediction:
+                ${prediction.prediction_date}<br>
+
+                Method:
+                ${method === "ml_random_forest"
+                    ? "Random Forest ML"
+                    : "Persistence estimate"}<br>
+
+                Confidence:
+                ${confidence}<br>
+
+                Current:
+                ${Number(
+                    prediction.current_latitude
+                ).toFixed(3)},
+                ${Number(
+                    prediction.current_longitude
+                ).toFixed(3)}<br>
+
+                Predicted:
+                ${Number(
+                    prediction.predicted_latitude
+                ).toFixed(3)},
+                ${Number(
+                    prediction.predicted_longitude
+                ).toFixed(3)}<br>
+
+                Predicted movement:
+                ${Number(
+                    prediction.predicted_distance_km
+                ).toFixed(2)} km<br>
+
+                Hazard weight:
+                ${Number(
+                    prediction.hazard_weight
+                ).toFixed(2)}
+            `);
+
+            icebergLayer.addLayer(marker);
+        }
+    );
+}
+
+
+function showIcebergs() {
+
+    if (sicHeatLayer &&
+        map.hasLayer(sicHeatLayer)) {
+        map.removeLayer(sicHeatLayer);
+    }
+
+    if (riskLayer &&
+        map.hasLayer(riskLayer)) {
+        map.removeLayer(riskLayer);
+    }
+
+    if (icebergLayer &&
+        !map.hasLayer(icebergLayer)) {
+        icebergLayer.addTo(map);
+    }
+
+    document.getElementById(
+        "sicButton"
+    ).classList.remove(
+        "active-mode"
+    );
+
+    document.getElementById(
+        "riskButton"
+    ).classList.remove(
+        "active-mode"
+    );
+
+    document.getElementById(
+        "icebergButton"
+    ).classList.remove(
+        "active-mode"
+    );
+
+    document.getElementById(
+        "icebergButton"
+    ).classList.add(
+        "active-mode"
+    );
+
+    const title =
+        document.getElementById(
+            "legendTitle"
+        );
+
+    if (title) {
+        title.textContent =
+            "Predicted Icebergs";
+    }
+
+    const sicLegend =
+        document.getElementById(
+            "sicLegend"
+        );
+
+    const riskLegend =
+        document.getElementById(
+            "riskLegend"
+        );
+
+    if (sicLegend)
+        sicLegend.style.display = "none";
+
+    if (riskLegend)
+        riskLegend.style.display = "none";
+
+    const icebergLegend =
+        document.getElementById(
+            "icebergLegend"
+        );
+
+    if (icebergLegend)
+        icebergLegend.style.display = "block";
+}
+
+
+// ------------------------------------------------
+// Dynamic forecast
+// ------------------------------------------------
+
+let forecastRequestId = 0;
+
+
+// ------------------------------------------------
+// Dynamic forecast
+// ------------------------------------------------
+
+async function updateForecast() {
+
+    const forecastDate =
+        document.getElementById(
+            "forecastDate"
+        ).value;
+
+    // Every invocation gets a unique request ID.
+    // Older requests are ignored if a newer
+    // date selection has happened.
+    const requestId =
+        ++forecastRequestId;
+
+    const isCurrentRequest = () => (
+        requestId === forecastRequestId &&
+        document.getElementById(
+            "forecastDate"
+        ).value === forecastDate
+    );
+
+    // ------------------------------------------------
+    // Module 4 — Keep the current route visible while
+    // the environmental forecast is being updated.
+    //
+    // The route is replaced only when the user
+    // explicitly clicks "Replan Route".
+    // ------------------------------------------------
+
+    if (document.getElementById("replanStatus")) {
+
+        if (lastRouteData) {
+
+            document.getElementById(
+                "replanStatus"
+            ).innerHTML =
+                `Updating forecast for ${forecastDate}...
+                 Existing route will remain until replanning.`;
+
+        } else {
+
+            document.getElementById(
+                "replanStatus"
+            ).innerHTML =
+                "Updating environmental forecast...";
+
+        }
+    }
+
+    document.getElementById(
+        "result"
+    ).innerHTML =
+        `Updating forecast for ${forecastDate}...`;
+
+    try {
+
+        // ------------------------------------------------
+        // Module 1 — Sea-ice forecast
+        // ------------------------------------------------
+        const response =
+            await fetch(
+                API_URL + "/forecast-grid",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        forecast_date:
+                            forecastDate
+                    })
+                }
+            );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                data.detail ||
+                "Forecast update failed."
+            );
+        }
+
+        // Do not allow an older request to continue.
+        if (!isCurrentRequest()) {
+            return;
+        }
+
+        // ------------------------------------------------
+        // Module 2 — Iceberg forecast
+        // ------------------------------------------------
+        const icebergResponse =
+            await fetch(
+                API_URL + "/iceberg-risk-grid",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        forecast_date:
+                            forecastDate
+                    })
+                }
+            );
+
+        const icebergData =
+            await icebergResponse.json();
+
+        if (!icebergResponse.ok) {
+            throw new Error(
+                icebergData.detail ||
+                "Iceberg-risk request failed."
+            );
+        }
+
+        // Critical race-condition guard:
+        // another date may have been selected while
+        // the iceberg request was running.
+        if (!isCurrentRequest()) {
+            return;
+        }
+
+        // ------------------------------------------------
+        // Rebuild iceberg layer
+        // ------------------------------------------------
+        rebuildIcebergLayer(
+            icebergData
+        );
+
+        // ------------------------------------------------
+        // Remove existing layers
+        // ------------------------------------------------
+        if (sicHeatLayer &&
+            map.hasLayer(sicHeatLayer)) {
+            map.removeLayer(sicHeatLayer);
+        }
+
+        if (riskLayer &&
+            map.hasLayer(riskLayer)) {
+            map.removeLayer(riskLayer);
+        }
+
+        if (icebergLayer &&
+            map.hasLayer(icebergLayer)) {
+            map.removeLayer(icebergLayer);
+        }
+
+        // ------------------------------------------------
+        // Rebuild SIC heat layer
+        // ------------------------------------------------
+        const heatPoints =
+            data.points.map(
+                point => [
+                    point.latitude,
+                    point.longitude,
+                    Math.max(
+                        0.01,
+                        point.sic / 100
+                    )
+                ]
+            );
+
+        sicHeatLayer =
+            L.heatLayer(
+                heatPoints,
+                {
+                    radius: 22,
+                    blur: 18,
+                    maxZoom: 6,
+                    minOpacity: 0.25
+                }
+            );
+
+        // ------------------------------------------------
+        // Rebuild risk layer
+        // ------------------------------------------------
+        riskLayer =
+            L.layerGroup();
+
+        data.points.forEach(
+            point => {
+
+                const circle =
+                    L.circleMarker(
+                        [
+                            point.latitude,
+                            point.longitude
+                        ],
+                        {
+                            renderer:
+                                canvasRenderer,
+
+                            radius: 5,
+
+                            stroke: false,
+
+                            fillColor:
+                                riskColor(
+                                    point.risk_code
+                                ),
+
+                            fillOpacity: 0.78
+                        }
+                    );
+
+                circle.bindPopup(
+                    `
+                    <b>Sea-Ice Prediction</b><br>
+                    Prediction:
+                    ${data.prediction_date}<br>
+                    SIC:
+                    ${point.sic.toFixed(2)}%<br>
+                    Risk:
+                    ${riskLabel(
+                        point.risk_code
+                    )}
+                    `
+                );
+
+                riskLayer.addLayer(
+                    circle
+                );
+            }
+        );
+
+        // ------------------------------------------------
+        // Display the layer matching the current mode
+        // ------------------------------------------------
+        const showingRisk =
+            riskLayerVisible();
+
+        const showingIcebergs =
+            document.getElementById(
+                "icebergButton"
+            ).classList.contains(
+                "active-mode"
+            );
+
+        if (showingIcebergs) {
+            icebergLayer.addTo(map);
+        } else if (showingRisk) {
+            riskLayer.addTo(map);
+        } else {
+            sicHeatLayer.addTo(map);
+        }
+
+        // Final guard before updating the UI.
+        if (!isCurrentRequest()) {
+            return;
+        }
+
+        document.getElementById(
+            "result"
+        ).innerHTML = `
+            <b>Prediction updated</b><br>
+            Forecast:
+            ${data.forecast_date}<br>
+            Prediction:
+            ${data.prediction_date}<br>
+            Mean SIC:
+            ${data.predicted_sic.mean_percent}%<br>
+            Maximum SIC:
+            ${data.predicted_sic.max_percent}%<br>
+            Iceberg tracks represented:
+            ${icebergData.iceberg_coverage.represented_tracks}
+            /
+            ${icebergData.iceberg_coverage.total_tracks}<br>
+            Coverage:
+            ${icebergData.iceberg_coverage.coverage_percent}%
+            <br><br>
+            ${
+                lastRouteData
+                    ? `Existing route is still displayed.<br>
+                       Click <b>Replan Route</b> to update
+                       navigation for this forecast.`
+                    : `Click <b>Calculate Route</b> to plan
+                       using this forecast.`
+            }
+        `;
+
+    } catch(error) {
+
+        // Do not display an error from an old request.
+        if (!isCurrentRequest()) {
+            return;
+        }
+
+        console.error(error);
+
+        document.getElementById(
+            "result"
+        ).innerHTML =
+            `<b>Forecast error:</b>
+             ${error.message}`;
+    }
+}
+
+
+
+
+function riskLayerVisible() {
+
+    const riskButton =
+        document.getElementById(
+            "riskButton"
+        );
+
+    return riskButton.classList.contains(
+        "active-mode"
+    );
+}
+
+
+// ------------------------------------------------
+// Display modes
+// ------------------------------------------------
+
+function showSIC() {
+
+    if (icebergLayer &&
+        map.hasLayer(icebergLayer)) {
+        map.removeLayer(icebergLayer);
+    }
+
+    if (riskLayer &&
+        map.hasLayer(riskLayer)) {
+
+        map.removeLayer(riskLayer);
+    }
+
+
+    if (sicHeatLayer &&
+        !map.hasLayer(sicHeatLayer)) {
+
+        sicHeatLayer.addTo(map);
+    }
+
+
+    document.getElementById(
+        "sicButton"
+    ).classList.add(
+        "active-mode"
+    );
+
+    document.getElementById(
+        "riskButton"
+    ).classList.remove(
+        "active-mode"
+    );
+
+
+    document.getElementById(
+        "legendTitle"
+    ).innerText =
+        "Predicted SIC";
+
+    document.getElementById(
+        "sicLegend"
+    ).style.display =
+        "block";
+
+    document.getElementById(
+        "riskLegend"
+    ).style.display =
+        "none";
+
+    const icebergLegend =
+        document.getElementById(
+            "icebergLegend"
+        );
+
+    if (icebergLegend)
+        icebergLegend.style.display = "none";
+
+}
+
+
+
+function showRisk() {
+
+    if (icebergLayer &&
+        map.hasLayer(icebergLayer)) {
+        map.removeLayer(icebergLayer);
+    }
+
+    if (sicHeatLayer &&
+        map.hasLayer(sicHeatLayer)) {
+
+        map.removeLayer(sicHeatLayer);
+    }
+
+
+    if (riskLayer &&
+        !map.hasLayer(riskLayer)) {
+
+        riskLayer.addTo(map);
+    }
+
+
+    document.getElementById(
+        "riskButton"
+    ).classList.add(
+        "active-mode"
+    );
+
+    document.getElementById(
+        "sicButton"
+    ).classList.remove(
+        "active-mode"
+    );
+
+    document.getElementById(
+        "icebergButton"
+    ).classList.remove(
+        "active-mode"
+    );
+
+
+    document.getElementById(
+        "legendTitle"
+    ).innerText =
+        "Predicted SIC Risk";
+
+    document.getElementById(
+        "sicLegend"
+    ).style.display =
+        "none";
+
+    document.getElementById(
+        "riskLegend"
+    ).style.display =
+        "block";
+}
+
+
+// ------------------------------------------------
+// Map selection
+// ------------------------------------------------
+
+function enableStartSelection() {
+
+    selectionMode = "start";
+
+    document.getElementById(
+        "selectionStatus"
+    ).innerText =
+        "Click the map to select START.";
+}
+
+
+function enableGoalSelection() {
+
+    selectionMode = "goal";
+
+    document.getElementById(
+        "selectionStatus"
+    ).innerText =
+        "Click the map to select DESTINATION.";
+}
+
+
+map.on(
+    "click",
+    function(event) {
+
+        if (!selectionMode)
+            return;
+
+
+        const lat =
+            event.latlng.lat;
+
+        const lon =
+            event.latlng.lng;
+
+
+        if (selectionMode === "start") {
+
+            document.getElementById(
+                "startLat"
+            ).value =
+                lat.toFixed(4);
+
+            document.getElementById(
+                "startLon"
+            ).value =
+                lon.toFixed(4);
+
+
+            if (startMarker)
+                map.removeLayer(
+                    startMarker
+                );
+
+
+            startMarker =
+                L.marker(
+                    [lat, lon]
+                )
+                .addTo(map)
+                .bindPopup(
+                    "Selected Start"
+                )
+                .openPopup();
+
+
+            selectionMode = null;
+
+            document.getElementById(
+                "selectionStatus"
+            ).innerText =
+                "Start selected.";
+
+        }
+
+
+        if (selectionMode === "goal") {
+
+            document.getElementById(
+                "goalLat"
+            ).value =
+                lat.toFixed(4);
+
+            document.getElementById(
+                "goalLon"
+            ).value =
+                lon.toFixed(4);
+
+
+            if (goalMarker)
+                map.removeLayer(
+                    goalMarker
+                );
+
+
+            goalMarker =
+                L.marker(
+                    [lat, lon]
+                )
+                .addTo(map)
+                .bindPopup(
+                    "Selected Destination"
+                )
+                .openPopup();
+
+
+            selectionMode = null;
+
+            document.getElementById(
+                "selectionStatus"
+            ).innerText =
+                "Destination selected.";
+
+        }
+
+    
+    const icebergLegend =
+        document.getElementById(
+            "icebergLegend"
+        );
+
+    if (icebergLegend)
+        icebergLegend.style.display = "none";
+
+}
+);
+
+
+// ------------------------------------------------
+// Route
+// ------------------------------------------------
+
+
+async function calculateRoute() {
+
+    const startLat =
+        Number(
+            document.getElementById(
+                "startLat"
+            ).value
+        );
+
+    const startLon =
+        Number(
+            document.getElementById(
+                "startLon"
+            ).value
+        );
+
+    const goalLat =
+        Number(
+            document.getElementById(
+                "goalLat"
+            ).value
+        );
+
+    const goalLon =
+        Number(
+            document.getElementById(
+                "goalLon"
+            ).value
+        );
+
+
+    document.getElementById(
+        "result"
+    ).innerHTML =
+        "Calculating route...";
+
+
+    try {
+
+        const response =
+            await fetch(
+                API_URL + "/route",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify({
+
+                        forecast_date:
+                            document.getElementById(
+                                "forecastDate"
+                            ).value,
+
+                        vessel_profile:
+                            document.getElementById(
+                                "vesselProfile"
+                            ).value,
+
+                        start_latitude:
+                            startLat,
+
+                        start_longitude:
+                            startLon,
+
+                        destination_latitude:
+                            goalLat,
+
+                        destination_longitude:
+                            goalLon
+
+                    })
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok)
+            throw new Error(
+                data.detail ||
+                "Route request failed."
+            );
+
+
+        if (routeLine)
+            map.removeLayer(routeLine);
+
+        if (startMarker)
+            map.removeLayer(startMarker);
+
+        if (goalMarker)
+            map.removeLayer(goalMarker);
+
+
+        const coordinates =
+            data.geometry.coordinates.map(
+                point => [
+                    point[1],
+                    point[0]
+                ]
+            );
+
+
+        routeLine =
+            L.polyline(
+                coordinates,
+                {
+                    color: "#0066ff",
+                    weight: 5,
+                    opacity: 0.95
+                }
+            ).addTo(map);
+
+
+        startMarker =
+            L.marker(
+                coordinates[0]
+            ).addTo(map)
+            .bindPopup(
+                "<b>Start</b>"
+            );
+
+
+        goalMarker =
+            L.marker(
+                coordinates[
+                    coordinates.length - 1
+                ]
+            ).addTo(map)
+            .bindPopup(
+                "<b>Destination</b>"
+            );
+
+
+        map.fitBounds(
+            routeLine.getBounds(),
+            {
+                padding: [40, 40]
+            }
+        );
+
+
+        // ------------------------------------------------
+        // Module 4 — Store initial route state
+        // ------------------------------------------------
+
+        lastRouteData = data;
+
+        currentVesselPosition = {
+            latitude: startLat,
+            longitude: startLon
+        };
+
+        // Enable dynamic replanning
+        const replanButton =
+            document.getElementById(
+                "replanButton"
+            );
+
+        if (replanButton) {
+            replanButton.disabled = false;
+        }
+
+        const progressButton =
+            document.getElementById(
+                "progressButton"
+            );
+
+        if (progressButton) {
+            progressButton.disabled = false;
+        }
+
+        const replanStatus =
+            document.getElementById(
+                "replanStatus"
+            );
+
+        if (replanStatus) {
+            replanStatus.innerHTML =
+                `Vessel at route start:
+                 ${startLat.toFixed(4)},
+                 ${startLon.toFixed(4)}.
+                 Ready to replan.`;
+        }
+
+        const route =
+            data.route;
+
+        const ice =
+            data.ice_exposure;
+
+
+        document.getElementById(
+            "result"
+        ).innerHTML = `
+
+        <b>Ice-aware route found</b><br><br>
+
+        Vessel:
+        ${data.vessel.profile}<br>
+
+        Forecast:
+        ${data.forecast.forecast_date}<br>
+
+        Predicted date:
+        ${data.forecast.prediction_date}<br><br>
+
+        Distance:
+        ${route.distance_km} km<br>
+
+        Straight-line:
+        ${route.straight_line_distance_km} km<br>
+
+        Detour:
+        ${route.detour_factor}x<br>
+
+        Extra distance:
+        ${route.extra_distance_km} km<br><br>
+
+        Mean SIC:
+        ${ice.mean_predicted_sic_percent}%<br>
+
+        Maximum SIC:
+        ${ice.max_predicted_sic_percent}%<br><br>
+
+        Risk:
+        ${ice.risk_exposure.LOW.percentage}%
+        LOW
+
+        `;
+
+
+        // Route stays visually on top
+        routeLine.bringToFront();
+
+    }
+
+    catch(error) {
+
+        document.getElementById(
+            "result"
+        ).innerHTML =
+            `<b>Error:</b>
+             ${error.message}`;
+
+    }
+}
+
+
+// Initial load
+populateForecastDates();
+updateForecast();
+
+
+
+// ------------------------------------------------
+// Module 4 — Dynamic route replanning
+// ------------------------------------------------
+
+async function replanRoute() {
+
+    if (!currentVesselPosition) {
+
+        document.getElementById(
+            "replanStatus"
+        ).innerHTML =
+            "Calculate an initial route first.";
+
+        return;
+    }
+
+
+    const destinationLat =
+        Number(
+            document.getElementById(
+                "goalLat"
+            ).value
+        );
+
+    const destinationLon =
+        Number(
+            document.getElementById(
+                "goalLon"
+            ).value
+        );
+
+    const forecastDate =
+        document.getElementById(
+            "forecastDate"
+        ).value;
+
+    const vesselProfile =
+        document.getElementById(
+            "vesselProfile"
+        ).value;
+
+
+    const resultElement =
+        document.getElementById(
+            "result"
+        );
+
+    const statusElement =
+        document.getElementById(
+            "replanStatus"
+        );
+
+
+    resultElement.innerHTML =
+        "Replanning route...";
+
+    statusElement.innerHTML =
+        "Updating environmental conditions and recalculating route...";
+
+
+    try {
+
+        const response =
+            await fetch(
+                API_URL + "/replan",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify({
+
+                        forecast_date:
+                            forecastDate,
+
+                        vessel_profile:
+                            vesselProfile,
+
+                        current_latitude:
+                            currentVesselPosition.latitude,
+
+                        current_longitude:
+                            currentVesselPosition.longitude,
+
+                        destination_latitude:
+                            destinationLat,
+
+                        destination_longitude:
+                            destinationLon
+
+                    })
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail ||
+                "Replanning request failed."
+            );
+        }
+
+
+        // ------------------------------------------------
+        // Replace the displayed route
+        // ------------------------------------------------
+
+        if (routeLine)
+            map.removeLayer(routeLine);
+
+        if (startMarker)
+            map.removeLayer(startMarker);
+
+        if (goalMarker)
+            map.removeLayer(goalMarker);
+
+
+        const coordinates =
+            data.geometry.coordinates.map(
+                point => [
+                    point[1],
+                    point[0]
+                ]
+            );
+
+
+        routeLine =
+            L.polyline(
+                coordinates,
+                {
+                    color: "#8e44ad",
+                    weight: 5,
+                    opacity: 0.95
+                }
+            ).addTo(map);
+
+
+        // ------------------------------------------------
+        // Replanned route destination marker
+        //
+        // The vessel position is represented separately by
+        // vesselMarker at the exact geographic position.
+        // We intentionally do not draw another start pin
+        // because the navigation grid may snap the route's
+        // first cell slightly away from the vessel.
+        // ------------------------------------------------
+
+        goalMarker =
+            L.marker(
+                coordinates[
+                    coordinates.length - 1
+                ]
+            ).addTo(map)
+            .bindPopup(
+                "<b>Destination</b>"
+            );
+
+
+        // ------------------------------------------------
+        // Vessel marker
+        // ------------------------------------------------
+
+        if (vesselMarker)
+            map.removeLayer(vesselMarker);
+
+        vesselMarker =
+            L.circleMarker(
+                [
+                    currentVesselPosition.latitude,
+                    currentVesselPosition.longitude
+                ],
+                {
+                    radius: 8,
+                    color: "#ffffff",
+                    weight: 2,
+                    fillColor: "#8e44ad",
+                    fillOpacity: 1
+                }
+            )
+            .addTo(map)
+            .bindPopup(
+                "<b>Vessel</b><br>" +
+                currentVesselPosition.latitude.toFixed(4) +
+                ", " +
+                currentVesselPosition.longitude.toFixed(4)
+            );
+
+
+        map.fitBounds(
+            routeLine.getBounds(),
+            {
+                padding: [40, 40]
+            }
+        );
+
+
+        // ------------------------------------------------
+        // Store latest route
+        // ------------------------------------------------
+
+        lastRouteData = data;
+
+
+        // ------------------------------------------------
+        // Update dashboard result
+        // ------------------------------------------------
+
+        const route =
+            data.route;
+
+
+        resultElement.innerHTML = `
+
+        <b>Dynamic route replanned</b><br><br>
+
+        Vessel:
+        ${data.vessel.profile}<br>
+
+        Forecast:
+        ${data.forecast.forecast_date}<br>
+
+        Predicted date:
+        ${data.forecast.prediction_date}<br><br>
+
+        Current position:<br>
+        ${data.current_position.latitude.toFixed(4)},
+        ${data.current_position.longitude.toFixed(4)}<br><br>
+
+        Remaining distance:
+        ${route.distance_km} km<br>
+
+        Straight-line:
+        ${route.straight_line_distance_km} km<br>
+
+        Detour:
+        ${route.detour_factor}x<br>
+
+        Extra distance:
+        ${route.extra_distance_km} km<br><br>
+
+        Navigation cost:
+        ${route.total_navigation_cost}
+
+        `;
+
+
+        statusElement.innerHTML =
+            `<b>Replanned successfully.</b>
+             Updated route starts from the
+             vessel's current position.`;
+
+
+        routeLine.bringToFront();
+
+        vesselMarker.bringToFront();
+
+    }
+
+    catch(error) {
+
+        resultElement.innerHTML =
+            `<b>Error:</b>
+             ${error.message}`;
+
+        statusElement.innerHTML =
+            "Replanning failed.";
+
+    }
+}
+
+
+
+// ------------------------------------------------
+// Module 4 — Simulate vessel progress
+// ------------------------------------------------
+
+async function simulateVesselProgress() {
+
+    if (!lastRouteData ||
+        !lastRouteData.geometry ||
+        !lastRouteData.geometry.coordinates ||
+        lastRouteData.geometry.coordinates.length < 3) {
+
+        document.getElementById(
+            "replanStatus"
+        ).innerHTML =
+            "Calculate an initial route first.";
+
+        return;
+    }
+
+
+    const coordinates =
+        lastRouteData.geometry.coordinates;
+
+
+    // Use the midpoint of the currently displayed
+    // route as the simulated vessel position.
+    const midpointIndex =
+        Math.floor(
+            coordinates.length / 2
+        );
+
+
+    const midpoint =
+        coordinates[midpointIndex];
+
+
+    // GeoJSON format = [longitude, latitude]
+    const currentLatitude =
+        Number(midpoint[1]);
+
+    const currentLongitude =
+        Number(midpoint[0]);
+
+
+    currentVesselPosition = {
+        latitude: currentLatitude,
+        longitude: currentLongitude
+    };
+
+
+    // ------------------------------------------------
+    // Draw / replace vessel marker
+    // ------------------------------------------------
+
+    if (vesselMarker)
+        map.removeLayer(vesselMarker);
+
+
+    vesselMarker =
+        L.circleMarker(
+            [
+                currentLatitude,
+                currentLongitude
+            ],
+            {
+                radius: 8,
+                color: "#ffffff",
+                weight: 2,
+                fillColor: "#2c7fb8",
+                fillOpacity: 1
+            }
+        )
+        .addTo(map)
+        .bindPopup(
+            "<b>Simulated Vessel Position</b><br>" +
+            currentLatitude.toFixed(4) +
+            ", " +
+            currentLongitude.toFixed(4)
+        );
+
+
+    // Keep route visible and put vessel above it.
+    if (routeLine) {
+        routeLine.bringToFront();
+    }
+
+    vesselMarker.bringToFront();
+
+
+    const statusElement =
+        document.getElementById(
+            "replanStatus"
+        );
+
+
+    if (statusElement) {
+        statusElement.innerHTML =
+            `<b>Vessel progressed.</b><br>
+             Current position:
+             ${currentLatitude.toFixed(4)},
+             ${currentLongitude.toFixed(4)}<br>
+             Click <b>Replan Route</b> to
+             recalculate from here.`;
+    }
+
+
+    const resultElement =
+        document.getElementById(
+            "result"
+        );
+
+
+    if (resultElement) {
+        resultElement.innerHTML =
+            `<b>Vessel position updated</b><br><br>
+             The vessel has been simulated
+             at the midpoint of the current route.<br><br>
+             Current position:
+             ${currentLatitude.toFixed(4)},
+             ${currentLongitude.toFixed(4)}<br><br>
+             Change the forecast date, then click
+             <b>Replan Route</b> to calculate a new
+             route from the vessel's current position.`;
+    }
+}
+
+</script>
+
+</body>
+
+</html>

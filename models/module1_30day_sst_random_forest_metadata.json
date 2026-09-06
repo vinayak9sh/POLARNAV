@@ -1,0 +1,28 @@
+{
+    "model": "RandomForestRegressor",
+    "dataset_period": "2025-06-01 to 2025-06-30",
+    "forecast_horizon": "next_day",
+    "region": "latitude <= -55",
+    "features": [
+        "lat",
+        "lon",
+        "sea_ice_concentration",
+        "sic_lag1",
+        "sic_lag2",
+        "sst_celsius"
+    ],
+    "target": "target_sic",
+    "n_estimators": 100,
+    "max_depth": 15,
+    "min_samples_leaf": 2,
+    "random_state": 42,
+    "training_sample_size": 400000,
+    "train_period": "2025-06-03 to 2025-06-26",
+    "test_period": "2025-06-27 to 2025-06-29",
+    "results": {
+        "MAE": 1.9382012710656695,
+        "RMSE": 5.35810149037474,
+        "R2": 0.9859255879568836
+    },
+    "note": "SST-enhanced comparison model; SIC-only model remains primary MVP baseline."
+}

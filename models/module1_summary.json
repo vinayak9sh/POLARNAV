@@ -1,0 +1,68 @@
+{
+    "module": "Module 1 - Sea Ice Concentration Prediction",
+    "status": "MVP complete",
+    "data": {
+        "sic_period": "2025-06-01 to 2025-06-30",
+        "sst_period": "2025-06-01 to 2025-06-30",
+        "working_region": "latitude <= -55 degrees",
+        "master_grid": "SIC native 432 x 432 Lambert Azimuthal grid",
+        "forecast_horizon": "1 day"
+    },
+    "primary_model": {
+        "type": "RandomForestRegressor",
+        "file": "../models/module1_30day_mvp_random_forest.joblib",
+        "features": [
+            "lat",
+            "lon",
+            "sea_ice_concentration",
+            "sic_lag1",
+            "sic_lag2"
+        ],
+        "target": "next_day_sea_ice_concentration",
+        "parameters": {
+            "n_estimators": 100,
+            "max_depth": 15,
+            "min_samples_leaf": 2,
+            "random_state": 42,
+            "n_jobs": -1
+        }
+    },
+    "training": {
+        "period": "2025-06-03 to 2025-06-26",
+        "sample_size": 400000
+    },
+    "standardized_evaluation": {
+        "period": "2025-06-27 to 2025-06-29",
+        "MAE_percent": 1.893,
+        "RMSE_percent": 5.4019,
+        "R2": 0.9857
+    },
+    "final_example_prediction": {
+        "input_date": "2025-06-29",
+        "prediction_date": "2025-06-30",
+        "MAE_percent": 1.8999
+    },
+    "sst_experiment": {
+        "file": "../models/module1_30day_sst_random_forest.joblib",
+        "features": [
+            "lat",
+            "lon",
+            "sea_ice_concentration",
+            "sic_lag1",
+            "sic_lag2",
+            "sst_celsius"
+        ],
+        "MAE_percent": 1.9382,
+        "RMSE_percent": 5.3581,
+        "R2": 0.9859,
+        "conclusion": "SST did not improve MAE on the standardized June test period."
+    },
+    "inference": {
+        "python_module": "../src/module1_predict.py",
+        "self_test": "passed"
+    },
+    "outputs": {
+        "prediction": "../models/module1_outputs/module1_mvp_30june2025_prediction.npz",
+        "metrics": "../models/module1_outputs/module1_mvp_30june2025_metrics.json"
+    }
+}

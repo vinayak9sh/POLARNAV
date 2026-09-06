@@ -1,0 +1,14 @@
+{
+  "dataset": "Antarctic daily sea-ice concentration",
+  "period": "2021-01-01 to 2024-12-31",
+  "grid_shape": [
+    432,
+    432
+  ],
+  "days_present": 1460,
+  "expected_days": 1461,
+  "missing_days": [
+    "2024-10-03"
+  ],
+  "note": "2024-10-03 is missing. Training pipeline must enforce chronological continuity when constructing lagged samples."
+}

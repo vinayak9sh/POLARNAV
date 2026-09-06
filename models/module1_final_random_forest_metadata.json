@@ -1,0 +1,34 @@
+{
+  "model": "RandomForestRegressor",
+  "training_period": "2021-01-04 to 2024-12-31",
+  "training_samples": 727000,
+  "features": [
+    "latitude",
+    "longitude",
+    "current_sic",
+    "sic_lag1",
+    "sic_lag2"
+  ],
+  "target": "next_day_sic",
+  "hyperparameters": {
+    "n_estimators": 200,
+    "max_depth": 18,
+    "min_samples_leaf": 2,
+    "random_state": 42
+  },
+  "validation_reference": {
+    "2024_mae": 0.5873,
+    "2024_rmse": 2.9691,
+    "2024_r2": 0.98796
+  },
+  "unseen_test_reference": {
+    "2025_mae": 0.6036,
+    "2025_rmse": 2.9874,
+    "2025_r2": 0.988303
+  },
+  "forward_reference": {
+    "2026_jan_to_jul_mae": 0.4401,
+    "2026_jan_to_jul_rmse": 2.6274,
+    "2026_jan_to_jul_r2": 0.985622
+  }
+}

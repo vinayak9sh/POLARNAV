@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+numpy
+pandas
+scikit-learn
+joblib
+requests
+pyarrow
+matplotlib
+cdsapi
+xarray
+netCDF4

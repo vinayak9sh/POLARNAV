@@ -1,0 +1,435 @@
+/* ============================================================
+   ElShaddAI — Antarctic Navigation
+   React application shell
+============================================================ */
+
+:root {
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  color: #e8edf2;
+  background: #07111c;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+
+/* ------------------------------------------------------------
+   Application shell
+------------------------------------------------------------ */
+
+.app {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #07111c;
+}
+
+
+/* ------------------------------------------------------------
+   Header
+------------------------------------------------------------ */
+
+.topbar {
+  height: 72px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 0 24px;
+
+  background: #0b1724;
+  border-bottom: 1px solid #223243;
+}
+
+.topbar h1 {
+  margin: 0;
+
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.topbar p {
+  margin: 3px 0 0;
+
+  color: #8ea3b7;
+  font-size: 12px;
+}
+
+.system-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  color: #a9bac9;
+  font-size: 12px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+
+  border-radius: 50%;
+  background: #4caf50;
+}
+
+
+/* ------------------------------------------------------------
+   Main workspace
+------------------------------------------------------------ */
+
+.workspace {
+  display: flex;
+
+  width: 100%;
+  height: calc(100vh - 72px);
+}
+
+
+/* ------------------------------------------------------------
+   Sidebar
+------------------------------------------------------------ */
+
+.sidebar {
+  width: 340px;
+  min-width: 340px;
+
+  overflow-y: auto;
+
+  padding: 18px;
+
+  background: #0a1622;
+  border-right: 1px solid #223243;
+}
+
+.panel {
+  margin-bottom: 16px;
+  padding: 16px;
+
+  border: 1px solid #243547;
+  border-radius: 10px;
+
+  background: #0e1c2a;
+}
+
+.panel h2 {
+  margin: 0 0 14px;
+
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.panel label {
+  display: block;
+
+  margin: 10px 0 5px;
+
+  color: #9db0c1;
+  font-size: 12px;
+}
+
+.panel input,
+.panel select {
+  width: 100%;
+
+  padding: 9px 10px;
+
+  color: #e8edf2;
+  background: #08131f;
+
+  border: 1px solid #2b4053;
+  border-radius: 6px;
+
+  outline: none;
+}
+
+.panel input:focus,
+.panel select:focus {
+  border-color: #5689b3;
+}
+
+
+/* ------------------------------------------------------------
+   Buttons
+------------------------------------------------------------ */
+
+.primary-button,
+.secondary-button,
+.replan-button,
+.layer-button {
+  width: 100%;
+
+  margin-top: 10px;
+  padding: 10px;
+
+  border: 1px solid transparent;
+  border-radius: 7px;
+
+  font-weight: 600;
+}
+
+.primary-button {
+  color: #ffffff;
+  background: #1769aa;
+}
+
+.secondary-button {
+  color: #ffffff;
+  background: #2879ad;
+}
+
+.replan-button {
+  color: #ffffff;
+  background: #8745a8;
+}
+
+.layer-buttons {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+}
+
+.layer-button {
+  margin-top: 0;
+
+  color: #b7c5d1;
+  background: #111f2d;
+
+  border-color: #2a3d4f;
+}
+
+.layer-button.active {
+  color: #ffffff;
+  border-color: #5689b3;
+}
+
+
+/* ------------------------------------------------------------
+   Navigation status
+------------------------------------------------------------ */
+
+.navigation-status {
+  margin-top: 10px;
+  padding: 9px;
+
+  color: #9db0c1;
+  background: #08131f;
+
+  border-radius: 6px;
+
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+
+/* ------------------------------------------------------------
+   Map
+------------------------------------------------------------ */
+
+.map-container {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+
+  background: #102231;
+}
+
+.map-placeholder {
+  position: absolute;
+  inset: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background:
+    radial-gradient(
+      ellipse at center,
+      #17364a 0%,
+      #0e2637 45%,
+      #091822 100%
+    );
+}
+
+.map-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+
+  color: #b9c9d7;
+}
+
+.map-message strong {
+  font-size: 18px;
+}
+
+.map-message span {
+  color: #71889b;
+  font-size: 12px;
+}
+
+
+/* ------------------------------------------------------------
+   Decision panel
+------------------------------------------------------------ */
+
+.decision-panel {
+  position: absolute;
+
+  left: 20px;
+  right: 20px;
+  bottom: 20px;
+
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+
+  overflow: hidden;
+
+  border: 1px solid #2b4053;
+  border-radius: 9px;
+
+  background: #0b1724ee;
+  backdrop-filter: blur(8px);
+}
+
+.decision-panel > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  padding: 12px 16px;
+}
+
+.metric-label {
+  color: #7f96a9;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.decision-panel strong {
+  color: #e5edf4;
+  font-size: 13px;
+}
+
+
+/* ------------------------------------------------------------
+   Responsive
+------------------------------------------------------------ */
+
+@media (max-width: 900px) {
+
+  .sidebar {
+    width: 290px;
+    min-width: 290px;
+  }
+
+}
+
+@media (max-width: 700px) {
+
+  .workspace {
+    flex-direction: column;
+    overflow: auto;
+  }
+
+  .sidebar {
+    width: 100%;
+    min-width: 0;
+    height: auto;
+  }
+
+  .map-container {
+    min-height: 600px;
+  }
+
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+}
+
+.map-container .leaflet-container {
+  width: 100%;
+  height: 100%;
+  background: #102231;
+}
+
+.iceberg-summary {
+  margin-top: 10px;
+}
+
+.iceberg-summary strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #dbe7f0;
+}
+
+.route-summary {
+  margin-top: 10px;
+}
+
+.route-summary strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #dbe7f0;
+}
+
+.route-summary div {
+  margin-top: 3px;
+}
+
+.route-summary hr {
+  margin: 9px 0;
+  border: 0;
+  border-top: 1px solid #263a4c;
+}
+
+.decision-summary {
+  margin-top: 10px;
+}
+
+.decision-summary strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #dbe7f0;
+}
+
+.decision-summary div {
+  margin-top: 3px;
+}
+
+.route-summary .change-value {
+  font-weight: 600;
+}

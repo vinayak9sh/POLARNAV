@@ -1,0 +1,34 @@
+{
+    "module": "Module 1 - Sea Ice Concentration Prediction",
+    "model_type": "RandomForestRegressor",
+    "dataset_period": "2025-06-01 to 2025-06-30",
+    "forecast_horizon": "next_day",
+    "region": "latitude <= -55",
+    "features": [
+        "lat",
+        "lon",
+        "sea_ice_concentration",
+        "sic_lag1",
+        "sic_lag2"
+    ],
+    "target": "target_sic",
+    "parameters": {
+        "n_estimators": 100,
+        "max_depth": 15,
+        "min_samples_leaf": 2,
+        "random_state": 42,
+        "n_jobs": -1
+    },
+    "training": {
+        "period": "2025-06-03 to 2025-06-26",
+        "sample_size": 400000
+    },
+    "evaluation": {
+        "period": "2025-06-27 to 2025-06-29",
+        "MAE_percent": 1.8930153231480102,
+        "RMSE_percent": 5.401854285987452,
+        "R2": 0.9856947938664369
+    },
+    "status": "primary MVP model",
+    "note": "SST was evaluated separately and did not improve MAE on the standardized benchmark."
+}
