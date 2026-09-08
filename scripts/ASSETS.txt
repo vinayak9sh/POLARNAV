@@ -1,0 +1,6 @@
+POLARNAV Runtime Assets v1
+
+module1_final_random_forest.joblib    227886689 bytes
+module1_final_forecast_runtime.npz     23335737 bytes
+module2_final_rf_latitude.joblib        65451457 bytes
+module2_final_rf_longitude.joblib       63695233 bytes
