@@ -373,3 +373,6 @@ def main():
             f"{destination.relative_to(BASE_DIR)} "
             f"({size_mb:.2f} MB)"
         )
+
+if __name__ == "__main__":
+    main()
