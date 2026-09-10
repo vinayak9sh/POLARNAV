@@ -6,7 +6,7 @@ import sys
 
 # ============================================================
 # POLARNAV Runtime Asset Setup
-# Release: v1.1.0
+# Release: v1.1.1
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -15,7 +15,7 @@ MODELS_DIR = BASE_DIR / "models"
 MODULE1_OUTPUTS_DIR = MODELS_DIR / "module1_outputs"
 
 RELEASE_URL = (
-    "https://github.com/vinayak9sh/POLARNAV/releases/download/v1.1.0/"
+    "https://github.com/vinayak9sh/POLARNAV/releases/download/v1.1.1/"
 )
 
 ASSETS = {
@@ -37,6 +37,17 @@ ASSETS = {
             "08ABC3361D1F86599A00066FD0D014FD7215B924F12A321094EF954C3C9AAEE7"
         ),
     },
+
+    "module1_navigation_runtime.npz": {
+    "path": (
+        MODULE1_OUTPUTS_DIR
+        / "module1_navigation_runtime.npz"
+    ),
+    "size": 391234,
+    "sha256": (
+        "FAB0AC62D7AF692AAF3B83B9B609013CDFCC61B2B3FE063B98676117AC76A1B9"
+    ),
+},
 
     "module2_final_rf_latitude.joblib": {
         "path": (
@@ -270,7 +281,7 @@ def main():
 
     print("=" * 60)
     print("POLARNAV Runtime Asset Setup")
-    print("Release: v1.1.0")
+    print("Release: v1.1.1")
     print("=" * 60)
 
     MODELS_DIR.mkdir(
