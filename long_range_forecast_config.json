@@ -1,0 +1,52 @@
+{
+  "validation_year": 2025,
+  "max_forecast_months": 6,
+  "method_by_lead_month": {
+    "1": "anomaly_aware",
+    "2": "anomaly_aware",
+    "3": "anomaly_aware",
+    "4": "climatology",
+    "5": "climatology",
+    "6": "climatology"
+  },
+  "uncertainty_percent_sic": {
+    "1": {
+      "typical_p75": 4.114,
+      "conservative_p90": 4.252
+    },
+    "2": {
+      "typical_p75": 5.153,
+      "conservative_p90": 5.41
+    },
+    "3": {
+      "typical_p75": 5.462,
+      "conservative_p90": 5.55
+    },
+    "4": {
+      "typical_p75": 5.551,
+      "conservative_p90": 5.585
+    },
+    "5": {
+      "typical_p75": 5.561,
+      "conservative_p90": 5.586
+    },
+    "6": {
+      "typical_p75": 5.571,
+      "conservative_p90": 5.588
+    }
+  },
+  "confidence_level_by_lead_month": {
+    "1": "High",
+    "2": "Moderate",
+    "3": "Moderate",
+    "4": "Low",
+    "5": "Low",
+    "6": "Low"
+  },
+  "notes": [
+    "Confidence is empirical and lead-time dependent.",
+    "Uncertainty values represent historical SIC forecast error envelopes.",
+    "2025 was treated as unseen validation data.",
+    "Long-range forecasts are decision-support products, not operational safety limits."
+  ]
+}

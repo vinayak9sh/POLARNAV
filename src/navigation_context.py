@@ -1,6 +1,17 @@
 from functools import lru_cache
+# --------------------------------------------------------
+# Module 1 — Sea ice
+#
+# Future dates are handled by the validated long-range
+# forecast engine. Existing short-range dates continue
+# using the original RF forecast.
+# --------------------------------------------------------
 
-from .module1_forecast import forecast_sic
+from .module1_forecast import (
+    forecast_sic,
+    forecast_long_range_sic,
+    get_long_range_forecast_window,
+)
 from .module1_risk import classify_sic_risk
 from .vessel_profiles import create_vessel_cost_surface
 
@@ -34,9 +45,33 @@ def get_navigation_context(
     # Module 1 — Sea ice
     # --------------------------------------------------------
 
-    forecast_result = forecast_sic(
-        forecast_date
-    )
+    # --------------------------------------------------------
+    # Module 1 — Sea ice
+    #
+    # Use the existing next-day RF forecast for dates that
+    # belong to the short-range runtime. For future dates
+    # beyond the latest observation, use the validated
+    # long-range forecast engine.
+    # --------------------------------------------------------
+
+    window = get_long_range_forecast_window()
+
+    latest_observation_date = window[
+        "latest_observation_date"
+    ]
+
+    requested_date = forecast_date
+
+    if requested_date > str(
+        latest_observation_date.date()
+    ):
+        forecast_result = forecast_long_range_sic(
+            requested_date
+        )
+    else:
+        forecast_result = forecast_sic(
+            requested_date
+        )
 
     predicted_sic = (
         forecast_result["predicted_sic"]

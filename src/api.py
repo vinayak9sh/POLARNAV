@@ -11,7 +11,11 @@ from .module4_navigation import (
     plan_navigation_route,
     replan_navigation_route,
 )
-from .module1_forecast import forecast_sic
+from .module1_forecast import (
+    forecast_sic,
+    forecast_long_range_sic,
+    get_long_range_forecast_window,
+)
 from .module1_risk import classify_sic_risk
 from .module1_cost import create_navigation_cost
 from .vessel_profiles import create_vessel_cost_surface
@@ -214,6 +218,35 @@ def health():
         "status": "ok" if RUNTIME_LOADED else "degraded",
         "module": "module1",
         "runtime_loaded": RUNTIME_LOADED
+    }
+
+# --------------------------------------------------
+# Long-range forecast window
+# --------------------------------------------------
+
+@app.get("/forecast-window")
+def forecast_window():
+    """
+    Return the currently available long-range SIC
+    forecast window.
+    """
+
+    window = get_long_range_forecast_window()
+
+    return {
+        "latest_observation_date": (
+            window["latest_observation_date"].strftime(
+                "%Y-%m-%d"
+            )
+        ),
+        "maximum_forecast_date": (
+            window["maximum_forecast_date"].strftime(
+                "%Y-%m-%d"
+            )
+        ),
+        "max_forecast_months": (
+            window["max_forecast_months"]
+        ),
     }
 
 # --------------------------------------------------
@@ -522,6 +555,247 @@ def forecast(request: ForecastRequest) -> Dict[str, Any]:
             detail=str(exc)
         )
 
+# --------------------------------------------------
+# Long-range SIC forecast
+# --------------------------------------------------
+
+@app.post("/forecast-long-range")
+def forecast_long_range(
+    request: ForecastRequest
+) -> Dict[str, Any]:
+    """
+    Generate a validated 1–6 month SIC forecast.
+    """
+
+    try:
+        result = forecast_long_range_sic(
+            request.forecast_date
+        )
+
+        predicted = result["forecast_sic"]
+
+        return {
+            "status": "success",
+
+            "forecast_date": str(
+                result["forecast_date"].date()
+            ),
+
+            "latest_observation_date": str(
+                result["latest_observation_date"].date()
+            ),
+
+            "horizon_months": (
+                result["horizon_months"]
+            ),
+
+            "method": (
+                result["method"]
+            ),
+
+            "alpha": (
+                result["alpha"]
+            ),
+
+            "confidence": (
+                result["confidence"]
+            ),
+
+            "uncertainty": {
+                "typical_p75_percent_sic": (
+                    result["uncertainty"]["typical_p75"]
+                ),
+                "conservative_p90_percent_sic": (
+                    result["uncertainty"]["conservative_p90"]
+                ),
+            },
+
+            "valid_cells": int(
+                np.sum(
+                    np.isfinite(predicted)
+                )
+            ),
+
+            "predicted_sic": {
+                "min_percent": round(
+                    float(np.nanmin(predicted)),
+                    2
+                ),
+                "max_percent": round(
+                    float(np.nanmax(predicted)),
+                    2
+                ),
+                "mean_percent": round(
+                    float(np.nanmean(predicted)),
+                    2
+                )
+            },
+
+            "grid": {
+                "rows": int(
+                    predicted.shape[0]
+                ),
+                "columns": int(
+                    predicted.shape[1]
+                )
+            }
+        }
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc)
+        )
+
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc)
+        )
+
+# --------------------------------------------------
+# Long-range SIC forecast grid
+# --------------------------------------------------
+
+@app.post("/forecast-long-range-grid")
+def forecast_long_range_grid(
+    request: ForecastRequest
+) -> Dict[str, Any]:
+    """
+    Generate a long-range SIC forecast grid for a
+    selected date, including empirical uncertainty
+    and confidence metadata.
+    """
+
+    try:
+        result = forecast_long_range_sic(
+            request.forecast_date
+        )
+
+        predicted = result["forecast_sic"]
+
+        # --------------------------------------------------
+        # Risk classification
+        # --------------------------------------------------
+
+        risk_code = classify_sic_risk(
+            predicted
+        )
+
+        # --------------------------------------------------
+        # Downsample for browser transmission
+        # --------------------------------------------------
+
+        step = 4
+
+        lat = result["latitude"][::step, ::step]
+        lon = result["longitude"][::step, ::step]
+        sic = predicted[::step, ::step]
+        risk = risk_code[::step, ::step]
+
+        rows, cols = lat.shape
+
+        points = []
+
+        for i in range(rows):
+            for j in range(cols):
+
+                if (
+                    not np.isfinite(lat[i, j])
+                    or not np.isfinite(lon[i, j])
+                    or not np.isfinite(sic[i, j])
+                    or risk[i, j] < 0
+                ):
+                    continue
+
+                points.append({
+                    "latitude": float(
+                        lat[i, j]
+                    ),
+                    "longitude": float(
+                        lon[i, j]
+                    ),
+                    "sic": float(
+                        sic[i, j]
+                    ),
+                    "risk_code": int(
+                        risk[i, j]
+                    )
+                })
+
+        return {
+            "status": "success",
+
+            "forecast_date": str(
+                result["forecast_date"].date()
+            ),
+
+            "latest_observation_date": str(
+                result[
+                    "latest_observation_date"
+                ].date()
+            ),
+
+            "horizon_months": (
+                result["horizon_months"]
+            ),
+
+            "method": (
+                result["method"]
+            ),
+
+            "confidence": (
+                result["confidence"]
+            ),
+
+            "uncertainty": {
+                "typical_p75_percent_sic": (
+                    result[
+                        "uncertainty"
+                    ]["typical_p75"]
+                ),
+                "conservative_p90_percent_sic": (
+                    result[
+                        "uncertainty"
+                    ]["conservative_p90"]
+                ),
+            },
+
+            "grid_step": step,
+
+            "valid_cells": (
+                result["valid_cells"]
+            ),
+
+            "predicted_sic": {
+                "min_percent": round(
+                    float(np.nanmin(predicted)),
+                    2
+                ),
+                "max_percent": round(
+                    float(np.nanmax(predicted)),
+                    2
+                ),
+                "mean_percent": round(
+                    float(np.nanmean(predicted)),
+                    2
+                )
+            },
+
+            "points": points
+        }
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc)
+        )
+
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc)
+        )
 
 # --------------------------------------------------
 # Forecast grid
@@ -766,7 +1040,19 @@ def route(request: RouteRequest) -> Dict[str, Any]:
             ),
             "prediction_date": str(
                 forecast_result["prediction_date"]
-            )
+            ),
+            "horizon_months": forecast_result.get(
+                "horizon_months"
+            ),
+            "method": forecast_result.get(
+                "method"
+            ),
+            "confidence": forecast_result.get(
+                "confidence"
+            ),
+            "uncertainty": forecast_result.get(
+                "uncertainty"
+            ),
         }
 
         # --------------------------------------------------

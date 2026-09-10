@@ -3,15 +3,21 @@ import AntarcticMap from "./components/AntarcticMap";
 import { useEffect, useState } from "react";
 import {
   getForecastGrid,
+  getLongRangeForecastGrid,
   getIcebergRiskGrid,
   calculateRoute,
   replanRoute,
+  getForecastWindow,
 } from "./services/api";
 
 function App() {
-  const [forecastDate, setForecastDate] = useState("2025-09-15");
+  const [forecastDate, setForecastDate] = useState("");
+  const [forecastWindow, setForecastWindow] = useState(null);
+  const [loadingForecastWindow, setLoadingForecastWindow] = useState(true);
+  const [forecastWindowError, setForecastWindowError] = useState(null);
 
   const [forecastData, setForecastData] = useState(null);
+  const [forecastMetadata, setForecastMetadata] = useState(null);
 
   const [loadingForecast, setLoadingForecast] = useState(false);
 
@@ -42,15 +48,85 @@ function App() {
   useEffect(() => {
     let cancelled = false;
 
+    async function loadForecastWindow() {
+      setLoadingForecastWindow(true);
+      setForecastWindowError(null);
+
+      try {
+        const data = await getForecastWindow();
+
+        if (!cancelled) {
+          setForecastWindow(data);
+
+          // Start with the first valid forecast date:
+          // the day immediately after the latest observation.
+          const firstForecastDate = new Date(
+            `${data.latest_observation_date}T12:00:00Z`
+          );
+
+          firstForecastDate.setUTCDate(
+            firstForecastDate.getUTCDate() + 1
+          );
+
+          const firstValidForecastDate =
+            firstForecastDate
+              .toISOString()
+              .split("T")[0];
+
+          setForecastDate(
+            firstValidForecastDate
+          );
+          setForecastData(null);
+          setForecastMetadata(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setForecastWindowError(error.message);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingForecastWindow(false);
+        }
+      }
+    }
+
+    loadForecastWindow();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
     async function loadForecast() {
       setLoadingForecast(true);
       setForecastError(null);
 
       try {
-        const data = await getForecastGrid(forecastDate);
+        if (
+          !forecastDate ||
+          !forecastWindow ||
+          forecastDate <= forecastWindow.latest_observation_date
+        ) {
+          return;
+        }
+
+        const data = await getLongRangeForecastGrid(
+          forecastDate
+        );
 
         if (!cancelled) {
           setForecastData(data);
+          setForecastMetadata({
+            forecast_date: data.forecast_date,
+            latest_observation_date: data.latest_observation_date,
+            horizon_months: data.horizon_months,
+            method: data.method,
+            confidence: data.confidence,
+            uncertainty: data.uncertainty,
+          });
         }
       } catch (error) {
         if (!cancelled) {
@@ -68,7 +144,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [forecastDate]);
+  }, [forecastDate, forecastWindow]);
 
   useEffect(() => {
     if (displayMode !== "icebergs") {
@@ -228,15 +304,94 @@ function App() {
 
             <label htmlFor="forecastDate">Forecast Date</label>
 
-            <select
+            <input
               id="forecastDate"
+              type="date"
               value={forecastDate}
-              onChange={(event) => setForecastDate(event.target.value)}
-            >
-              <option value="2025-09-15">15 Sep 2025</option>
+              min={
+                forecastWindow
+                  ? (() => {
+                      const date = new Date(
+                        `${forecastWindow.latest_observation_date}T00:00:00`
+                      );
+                      date.setDate(date.getDate() + 1);
+                      return date.toISOString().slice(0, 10);
+                    })()
+                  : ""
+              }
+              max={
+                forecastWindow
+                  ? forecastWindow.maximum_forecast_date
+                  : ""
+              }
+              onChange={(event) =>
+                setForecastDate(event.target.value)
+              }
+              disabled={
+                loadingForecastWindow ||
+                Boolean(forecastWindowError)
+              }
+            />
 
-              <option value="2025-09-20">20 Sep 2025</option>
-            </select>
+            {loadingForecastWindow && (
+              <div className="navigation-status">
+                Loading forecast window...
+              </div>
+            )}
+
+            {forecastWindowError && (
+              <div className="navigation-status">
+                Forecast window error: {forecastWindowError}
+              </div>
+            )}
+
+            {forecastWindow && (
+              <div className="navigation-status">
+                Select a forecast date between{" "}
+                {forecastWindow.latest_observation_date} and{" "}
+                {forecastWindow.maximum_forecast_date}.
+              </div>
+            )}
+
+            {forecastMetadata && (
+              <div className="navigation-status forecast-intelligence">
+                <strong>Forecast Intelligence</strong>
+
+                <div>
+                  Horizon:{" "}
+                  {forecastMetadata.horizon_months} month
+                  {forecastMetadata.horizon_months !== 1 ? "s" : ""}
+                </div>
+
+                <div>
+                  Method:{" "}
+                  {forecastMetadata.method === "anomaly_aware"
+                    ? "Anomaly-aware"
+                    : "Seasonal climatology"}
+                </div>
+
+                <div>
+                  Confidence:{" "}
+                  <strong>
+                    {forecastMetadata.confidence}
+                  </strong>
+                </div>
+
+                <div>
+                  Expected error: ±
+                  {forecastMetadata.uncertainty
+                    ?.typical_p75_percent_sic}%
+                  SIC
+                </div>
+
+                <div>
+                  Conservative error: ±
+                  {forecastMetadata.uncertainty
+                    ?.conservative_p90_percent_sic}%
+                  SIC
+                </div>
+              </div>
+            )}
 
             <label htmlFor="vesselProfile">Vessel Profile</label>
 
@@ -299,10 +454,53 @@ function App() {
             {routeData && (
               <div className="navigation-status">
                 <strong>Route calculated</strong>
-                <br />
-                {routeData.route.distance_km} km
-                <br />
-                Navigation cost: {routeData.route.total_navigation_cost}
+
+                <div>
+                  Distance: {routeData.route.distance_km} km
+                </div>
+
+                <div>
+                  Navigation cost:{" "}
+                  {routeData.route.total_navigation_cost}
+                </div>
+
+                {routeData.forecast && (
+                  <>
+                    <hr />
+
+                    <strong>Forecast used</strong>
+
+                    <div>
+                      Date:{" "}
+                      {String(
+                        routeData.forecast.forecast_date
+                      ).slice(0, 10)}
+                    </div>
+
+                    <div>
+                      Horizon:{" "}
+                      {routeData.forecast.horizon_months} month
+                      {routeData.forecast.horizon_months !== 1
+                        ? "s"
+                        : ""}
+                    </div>
+
+                    <div>
+                      Method:{" "}
+                      {routeData.forecast.method ===
+                      "anomaly_aware"
+                        ? "Anomaly-aware"
+                        : "Seasonal climatology"}
+                    </div>
+
+                    <div>
+                      Confidence:{" "}
+                      <strong>
+                        {routeData.forecast.confidence}
+                      </strong>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </section>
