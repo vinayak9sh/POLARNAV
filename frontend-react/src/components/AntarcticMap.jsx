@@ -31,6 +31,7 @@ function AntarcticMap({
   icebergData,
   routeData,
   vesselPosition,
+  vesselHeading = 0,
   routeIsReplanned = false,
   displayMode = "sic",
   selectedRouteIndex = 0,
@@ -363,82 +364,65 @@ function AntarcticMap({
       return;
     }
 
+    // Display ONLY the selected route
+    const safeIndex = selectedRouteIndex >= 0 && selectedRouteIndex < routeList.length ? selectedRouteIndex : 0;
+    const rData = routeList[safeIndex];
+
+    if (!rData?.geometry?.coordinates || rData.geometry.coordinates.length < 2) {
+      return;
+    }
+
     const layers = [];
-    let selectedBounds = null;
+    const coordinates = rData.geometry.coordinates.map((point) => [
+      Number(point[1]),
+      Number(point[0]),
+    ]);
 
-    routeList.forEach((rData, idx) => {
-      if (!rData?.geometry?.coordinates || rData.geometry.coordinates.length < 2) {
-        return;
-      }
+    const baseColor = routeIsReplanned
+      ? "#8e44ad"
+      : ROUTE_COLORS[safeIndex % ROUTE_COLORS.length];
 
-      const isSelected = idx === selectedRouteIndex;
-      const coordinates = rData.geometry.coordinates.map((point) => [
-        Number(point[1]),
-        Number(point[0]),
-      ]);
-
-      const baseColor = routeIsReplanned
-        ? "#8e44ad"
-        : ROUTE_COLORS[idx % ROUTE_COLORS.length];
-
-      const polyline = L.polyline(coordinates, {
-        color: baseColor,
-        weight: isSelected ? 6 : 3,
-        opacity: isSelected ? 0.95 : 0.45,
-        dashArray: isSelected ? null : "6, 6",
-        lineCap: "round",
-        lineJoin: "round",
-      });
-
-      const label = rData.label || rData.route_name || (idx === 0 ? "Primary Route (Optimal)" : `Alternative ${idx}`);
-      const tagline = rData.tagline ? `<br><i>${rData.tagline}</i>` : "";
-      const riskInfo = rData.risk_level ? `<br>Risk Level: ${rData.risk_level}` : "";
-      polyline.bindTooltip(
-        `<b>${label}</b>${tagline}<br>Distance: ${rData.route?.distance_km} km<br>Cost: ${rData.route?.total_navigation_cost}${riskInfo}`,
-        { sticky: true }
-      );
-
-      if (onSelectRoute) {
-        polyline.on("click", () => onSelectRoute(idx));
-      }
-
-      layers.push(polyline);
-
-      if (isSelected) {
-        selectedBounds = polyline.getBounds();
-
-        const start = L.circleMarker(coordinates[0], {
-          radius: 7,
-          color: "#ffffff",
-          weight: 2,
-          fillColor: baseColor,
-          fillOpacity: 1,
-        });
-        start.bindPopup(`<b>Start (${label})</b>`);
-        layers.push(start);
-
-        const destination = L.circleMarker(coordinates[coordinates.length - 1], {
-          radius: 7,
-          color: "#ffffff",
-          weight: 2,
-          fillColor: "#d73027",
-          fillOpacity: 1,
-        });
-        destination.bindPopup(`<b>Destination (${label})</b>`);
-        layers.push(destination);
-      }
+    const polyline = L.polyline(coordinates, {
+      color: baseColor,
+      weight: 6,
+      opacity: 0.95,
+      lineCap: "round",
+      lineJoin: "round",
     });
+
+    const label = rData.label || rData.route_name || (safeIndex === 0 ? "Primary Route (Optimal)" : `Alternative ${safeIndex}`);
+    const tagline = rData.tagline ? `<br><i>${rData.tagline}</i>` : "";
+    const riskInfo = rData.risk_level ? `<br>Risk Level: ${rData.risk_level}` : "";
+    polyline.bindTooltip(
+      `<b>${label}</b>${tagline}<br>Distance: ${rData.route?.distance_km} km<br>Cost: ${rData.route?.total_navigation_cost}${riskInfo}`,
+      { sticky: true }
+    );
+
+    layers.push(polyline);
+
+    const start = L.circleMarker(coordinates[0], {
+      radius: 7,
+      color: "#ffffff",
+      weight: 2,
+      fillColor: baseColor,
+      fillOpacity: 1,
+    });
+    start.bindPopup(`<b>Start (${label})</b>`);
+    layers.push(start);
+
+    const destination = L.circleMarker(coordinates[coordinates.length - 1], {
+      radius: 7,
+      color: "#ffffff",
+      weight: 2,
+      fillColor: "#d73027",
+      fillOpacity: 1,
+    });
+    destination.bindPopup(`<b>Destination (${label})</b>`);
+    layers.push(destination);
 
     const routeGroup = L.layerGroup(layers);
     routeGroup.addTo(map);
     routeLayerRef.current = routeGroup;
-
-    if (selectedBounds) {
-      map.fitBounds(selectedBounds, {
-        padding: [50, 50],
-        maxZoom: 5,
-      });
-    }
 
     return () => {
       if (map.hasLayer(routeGroup)) {
@@ -448,7 +432,7 @@ function AntarcticMap({
         routeLayerRef.current = null;
       }
     };
-  }, [routeData, routeIsReplanned, selectedRouteIndex, onSelectRoute]);
+  }, [routeData, routeIsReplanned, selectedRouteIndex]);
 
   // ------------------------------------------------------------
   // Current vessel position
@@ -477,19 +461,35 @@ function AntarcticMap({
     }
 
     const latitude = Number(vesselPosition.latitude);
-
     const longitude = Number(vesselPosition.longitude);
 
-    const vesselMarker = L.circleMarker([latitude, longitude], {
-      radius: 8,
-      color: "#ffffff",
-      weight: 2,
-      fillColor: "#2c7fb8",
-      fillOpacity: 1,
+    const shipSvg = `
+      <div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;transform:rotate(${vesselHeading}deg);transition:transform 0.15s ease-out;">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <filter id="shipGlow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#00f0ff" flood-opacity="0.8"/>
+          </filter>
+          <path d="M16 2 L26 26 L16 20 L6 26 Z" fill="#00f0ff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round" filter="url(#shipGlow)"/>
+          <circle cx="16" cy="11" r="2.5" fill="#ffffff"/>
+        </svg>
+      </div>
+    `;
+
+    const shipIcon = L.divIcon({
+      className: "vessel-ship-marker",
+      html: shipSvg,
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
+    });
+
+    const vesselMarker = L.marker([latitude, longitude], {
+      icon: shipIcon,
+      zIndexOffset: 1000,
     });
 
     vesselMarker.bindPopup(`
-    <b>Current Vessel Position</b><br>
+    <b>Vessel Position & Telemetry</b><br>
+    Heading: ${vesselHeading}°<br>
     Latitude: ${latitude.toFixed(4)}<br>
     Longitude: ${longitude.toFixed(4)}
   `);
@@ -497,8 +497,6 @@ function AntarcticMap({
     vesselMarker.addTo(map);
 
     vesselMarkerRef.current = vesselMarker;
-
-    vesselMarker.bringToFront();
 
     return () => {
       if (map.hasLayer(vesselMarker)) {
@@ -509,7 +507,7 @@ function AntarcticMap({
         vesselMarkerRef.current = null;
       }
     };
-  }, [vesselPosition]);
+  }, [vesselPosition, vesselHeading]);
 
   return (
     <div

@@ -21,6 +21,7 @@ from typing import Any, Dict, Optional
 import numpy as np
 
 from .module1_route import plan_route
+from .module1_multi_route import plan_multiple_routes
 
 
 def plan_navigation_route(
@@ -62,26 +63,53 @@ def replan_navigation_route(
     navigation_cost,
     spatial_output: Dict[str, Any],
     blocked_cost: float = 100000.0,
-    previous_route: Optional[Dict[str, Any]] = None
+    previous_route: Optional[Dict[str, Any]] = None,
+    category: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Recalculate the route from the vessel's updated
-    position to the original destination.
-
-    This represents dynamic route replanning after
-    new environmental information becomes available.
+    position to the original destination according to the selected category.
     """
 
-    result = plan_route(
-        start_lat=current_latitude,
-        start_lon=current_longitude,
-        goal_lat=destination_latitude,
-        goal_lon=destination_longitude,
-        navigation_cost=navigation_cost,
-        spatial_output=spatial_output,
-        blocked_cost=blocked_cost
-    )
+    try:
+        routes = plan_multiple_routes(
+            start_lat=current_latitude,
+            start_lon=current_longitude,
+            goal_lat=destination_latitude,
+            goal_lon=destination_longitude,
+            navigation_cost=navigation_cost,
+            spatial_output=spatial_output,
+            num_routes=3,
+            blocked_cost=blocked_cost
+        )
+    except Exception:
+        # Fallback to single route planning if multi-route generation fails
+        routes = [
+            plan_route(
+                start_lat=current_latitude,
+                start_lon=current_longitude,
+                goal_lat=destination_latitude,
+                goal_lon=destination_longitude,
+                navigation_cost=navigation_cost,
+                spatial_output=spatial_output,
+                blocked_cost=blocked_cost
+            )
+        ]
 
+    matched_route = None
+    if category:
+        cat_lower = category.lower()
+        for r in routes:
+            r_cat = r.get("category", "").lower()
+            if cat_lower in r_cat or r_cat in cat_lower:
+                matched_route = r
+                break
+
+    if matched_route is None:
+        matched_route = routes[0]
+
+    result = matched_route.copy()
+    result["alternative_routes"] = routes
     result["navigation_mode"] = "replanned_route"
 
     if previous_route is not None:

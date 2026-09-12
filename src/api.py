@@ -87,6 +87,7 @@ class ReplanRequest(BaseModel):
     current_longitude: float
     destination_latitude: float
     destination_longitude: float
+    category: str = "safest"
 
 
 class ForecastRequest(BaseModel):
@@ -1121,7 +1122,8 @@ def replan(request: ReplanRequest) -> Dict[str, Any]:
             destination_latitude=request.destination_latitude,
             destination_longitude=request.destination_longitude,
             navigation_cost=navigation_cost,
-            spatial_output=spatial_output
+            spatial_output=spatial_output,
+            category=request.category
         )
 
                 # --------------------------------------------------

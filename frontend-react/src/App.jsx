@@ -1,6 +1,6 @@
 import "./App.css";
 import AntarcticMap from "./components/AntarcticMap";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   getForecastGrid,
   getLongRangeForecastGrid,
@@ -9,6 +9,56 @@ import {
   replanRoute,
   getForecastWindow,
 } from "./services/api";
+
+function getDistanceToRouteInKm(vesselPos, routeCoordinates) {
+  if (!vesselPos || !routeCoordinates || routeCoordinates.length < 2) {
+    return 0.0;
+  }
+
+  const vLat = Number(vesselPos.latitude);
+  const vLon = Number(vesselPos.longitude);
+  if (!Number.isFinite(vLat) || !Number.isFinite(vLon)) return 0.0;
+
+  let minDistanceKm = Infinity;
+
+  for (let i = 0; i < routeCoordinates.length - 1; i++) {
+    const ptA = routeCoordinates[i];
+    const ptB = routeCoordinates[i + 1];
+
+    const aLon = Array.isArray(ptA) ? Number(ptA[0]) : Number(ptA.longitude);
+    const aLat = Array.isArray(ptA) ? Number(ptA[1]) : Number(ptA.latitude);
+    const bLon = Array.isArray(ptB) ? Number(ptB[0]) : Number(ptB.longitude);
+    const bLat = Array.isArray(ptB) ? Number(ptB[1]) : Number(ptB.latitude);
+
+    const cosLat = Math.cos((aLat * Math.PI) / 180.0);
+
+    const dxV = (vLon - aLon) * 111.0 * cosLat;
+    const dyV = (vLat - aLat) * 111.0;
+
+    const dxB = (bLon - aLon) * 111.0 * cosLat;
+    const dyB = (bLat - aLat) * 111.0;
+
+    const lenSq = dxB * dxB + dyB * dyB;
+
+    let dist = 0.0;
+    if (lenSq === 0) {
+      dist = Math.hypot(dxV, dyV);
+    } else {
+      const t = Math.max(0, Math.min(1, (dxV * dxB + dyV * dyB) / lenSq));
+      const qx = t * dxB;
+      const qy = t * dyB;
+      dist = Math.hypot(dxV - qx, dyV - qy);
+    }
+
+    if (dist < minDistanceKm) {
+      minDistanceKm = dist;
+    }
+  }
+
+  return Number.isFinite(minDistanceKm) ? minDistanceKm : 0.0;
+}
+
+const OFF_TRACK_BUFFER_KM = 5;
 
 function App() {
   const [forecastDate, setForecastDate] = useState("");
@@ -34,6 +84,11 @@ function App() {
   const [routeError, setRouteError] = useState(null);
 
   const [vesselPosition, setVesselPosition] = useState(null);
+  const [vesselHeading, setVesselHeading] = useState(0);
+  const [vesselSpeed, setVesselSpeed] = useState(0);
+  const [offTrackDistance, setOffTrackDistance] = useState("0.0");
+  const [isOffTrack, setIsOffTrack] = useState(false);
+  const isAutoReplanningRef = useRef(false);
 
   const [replannedRouteData, setReplannedRouteData] = useState(null);
 
@@ -189,17 +244,18 @@ function App() {
     setSelectedRouteIndex(0);
     setReplannedRouteData(null);
 
+    const startLat = Number(document.getElementById("startLatitude").value);
+    const startLon = Number(document.getElementById("startLongitude").value);
+
     try {
       const data = await calculateRoute({
         forecast_date: forecastDate,
 
         vessel_profile: document.getElementById("vesselProfile").value,
 
-        start_latitude: Number(document.getElementById("startLatitude").value),
+        start_latitude: startLat,
 
-        start_longitude: Number(
-          document.getElementById("startLongitude").value,
-        ),
+        start_longitude: startLon,
 
         destination_latitude: Number(
           document.getElementById("destinationLatitude").value,
@@ -211,6 +267,8 @@ function App() {
       });
 
       setRouteData(data);
+      setVesselPosition({ latitude: startLat, longitude: startLon });
+      setVesselSpeed(0);
     } catch (error) {
       setRouteError(error.message);
     } finally {
@@ -244,24 +302,34 @@ function App() {
     });
   }
 
-  async function handleReplanRoute() {
-    if (!vesselPosition) {
-      setReplanError("Simulate vessel progress first.");
-      return;
-    }
+  async function handleReplanRouteFromPos(pos) {
+    const targetPos = pos || vesselPosition;
+    if (!targetPos) return;
 
     setLoadingReplan(true);
     setReplanError(null);
 
     try {
+      const selectedR = routeData?.alternative_routes
+        ? routeData.alternative_routes[selectedRouteIndex]
+        : routeData;
+      const category =
+        selectedR?.category ||
+        (selectedRouteIndex === 0
+          ? "safest"
+          : selectedRouteIndex === 1
+            ? "efficient"
+            : "balanced");
+
       const data = await replanRoute({
         forecast_date: forecastDate,
 
-        vessel_profile: document.getElementById("vesselProfile").value,
+        vessel_profile:
+          document.getElementById("vesselProfile")?.value || "standard",
 
-        current_latitude: vesselPosition.latitude,
+        current_latitude: targetPos.latitude,
 
-        current_longitude: vesselPosition.longitude,
+        current_longitude: targetPos.longitude,
 
         destination_latitude: Number(
           document.getElementById("destinationLatitude").value,
@@ -270,6 +338,8 @@ function App() {
         destination_longitude: Number(
           document.getElementById("destinationLongitude").value,
         ),
+
+        category: category,
       });
 
       setReplannedRouteData(data);
@@ -279,6 +349,73 @@ function App() {
       setLoadingReplan(false);
     }
   }
+
+  async function handleReplanRoute() {
+    return handleReplanRouteFromPos(vesselPosition);
+  }
+
+  // Real-time movement effect: updates vessel position continuously along heading when speed > 0
+  useEffect(() => {
+    if (vesselSpeed <= 0 || !vesselPosition) return;
+
+    const interval = setInterval(() => {
+      setVesselPosition((prevPos) => {
+        if (!prevPos) return prevPos;
+
+        const stepDistKm = vesselSpeed * 0.005;
+        const rad = (vesselHeading * Math.PI) / 180.0;
+
+        const deltaLat = (stepDistKm / 111.0) * Math.cos(rad);
+        const cosLat = Math.max(
+          0.1,
+          Math.cos((prevPos.latitude * Math.PI) / 180.0),
+        );
+        const deltaLon = (stepDistKm / (111.0 * cosLat)) * Math.sin(rad);
+
+        return {
+          latitude: prevPos.latitude + deltaLat,
+          longitude: prevPos.longitude + deltaLon,
+        };
+      });
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [vesselSpeed, vesselHeading, vesselPosition !== null]);
+
+  // Off-track buffer monitoring effect: checks distance to route & triggers auto-replan if > 50km
+  useEffect(() => {
+    if (!vesselPosition) return;
+
+    const activeR =
+      replannedRouteData ||
+      (routeData?.alternative_routes
+        ? routeData.alternative_routes[selectedRouteIndex]
+        : routeData);
+    const coords = activeR?.geometry?.coordinates || activeR?.coordinates;
+
+    if (!coords || coords.length < 2) return;
+
+    const dist = getDistanceToRouteInKm(vesselPosition, coords);
+    setOffTrackDistance(dist.toFixed(1));
+
+    const isExceeded = dist > OFF_TRACK_BUFFER_KM;
+    setIsOffTrack(isExceeded);
+
+    if (isExceeded && !loadingReplan && !isAutoReplanningRef.current) {
+      isAutoReplanningRef.current = true;
+      handleReplanRouteFromPos(vesselPosition).finally(() => {
+        setTimeout(() => {
+          isAutoReplanningRef.current = false;
+        }, 3000);
+      });
+    }
+  }, [
+    vesselPosition,
+    routeData,
+    replannedRouteData,
+    selectedRouteIndex,
+    loadingReplan,
+  ]);
 
   return (
     <div className="app">
@@ -615,40 +752,7 @@ function App() {
               >
                 Risk Level
               </button>
-
-              <button
-                className={`layer-button ${
-                  displayMode === "icebergs" ? "active" : ""
-                }`}
-                onClick={() => setDisplayMode("icebergs")}
-              >
-                Icebergs
-              </button>
             </div>
-
-            {displayMode === "icebergs" && icebergData?.iceberg_coverage && (
-              <div className="navigation-status iceberg-summary">
-                <strong>Iceberg Coverage</strong>
-
-                <div>
-                  Represented: {icebergData.iceberg_coverage.represented_tracks}
-                  /{icebergData.iceberg_coverage.total_tracks}
-                </div>
-
-                <div>
-                  ML predictions: {icebergData.iceberg_coverage.ml_predictions}
-                </div>
-
-                <div>
-                  Persistence:{" "}
-                  {icebergData.iceberg_coverage.persistence_estimates}
-                </div>
-
-                <div>
-                  Coverage: {icebergData.iceberg_coverage.coverage_percent}%
-                </div>
-              </div>
-            )}
           </section>
 
           {loadingForecast && (
@@ -663,37 +767,58 @@ function App() {
             </div>
           )}
 
-          {loadingIcebergs && (
-            <div className="navigation-status">
-              Loading iceberg predictions...
-            </div>
-          )}
-
-          {icebergError && (
-            <div className="navigation-status">
-              Iceberg error: {icebergError}
-            </div>
-          )}
-
           {/* Dynamic navigation */}
           <section className="panel">
-            <h2>Navigation</h2>
+            <h2>Vessel Navigation Controls</h2>
 
-            <button
-              className="secondary-button"
-              onClick={handleSimulateProgress}
-              disabled={!routeData}
-            >
-              🚢 Simulate Vessel Progress
-            </button>
+            {/* Ship Heading & Rotation Controls */}
+            <div className="vessel-control-group">
+              <label>Vessel Heading: <strong>{vesselHeading}°</strong></label>
+              <div className="rotation-button-row">
+                <button
+                  type="button"
+                  className="rotate-btn"
+                  onClick={() => setVesselHeading((h) => (h - 15 + 360) % 360)}
+                >
+                  ↺ Rotate -15°
+                </button>
+                <button
+                  type="button"
+                  className="rotate-btn"
+                  onClick={() => setVesselHeading((h) => (h + 15) % 360)}
+                >
+                  ↻ Rotate +15°
+                </button>
+              </div>
+            </div>
 
-            <button
-              className="replan-button"
-              onClick={handleReplanRoute}
-              disabled={!vesselPosition || loadingReplan}
-            >
-              {loadingReplan ? "Replanning..." : "🔄 Replan Route"}
-            </button>
+            {/* Speed Control Slider */}
+            <div className="vessel-control-group">
+              <label>
+                Vessel Speed: <strong>{vesselSpeed === 0 ? "0 (Stopped)" : `${vesselSpeed} knots`}</strong>
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={vesselSpeed}
+                onChange={(e) => setVesselSpeed(Number(e.target.value))}
+                className="speed-slider"
+              />
+            </div>
+
+            {/* Off-track Buffer & Telemetry */}
+            {vesselPosition && (
+              <div className="navigation-status telemetry-box">
+                <div><strong>Distance to Route:</strong> {offTrackDistance} km</div>
+                <div><strong>Buffer Threshold:</strong> {OFF_TRACK_BUFFER_KM.toFixed(1)} km</div>
+                <div style={{ marginTop: "6px" }}>
+                  <span className={`status-badge ${isOffTrack ? "off-track" : "on-track"}`}>
+                    {isOffTrack ? "⚠️ OFF TRACK (Rerouting...)" : "✅ ON TRACK (Within Buffer)"}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {replanError && (
               <div className="navigation-status">
@@ -838,6 +963,7 @@ function App() {
               icebergData={icebergData}
               routeData={replannedRouteData || routeData}
               vesselPosition={vesselPosition}
+              vesselHeading={vesselHeading}
               routeIsReplanned={Boolean(replannedRouteData)}
               displayMode={displayMode}
               selectedRouteIndex={selectedRouteIndex}
