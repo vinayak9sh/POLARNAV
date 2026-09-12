@@ -24,6 +24,8 @@ function icebergMethodLabel(prediction) {
     : "Persistence estimate";
 }
 
+const ROUTE_COLORS = ["#0066ff", "#00b894", "#e17055", "#6c5ce7"];
+
 function AntarcticMap({
   forecastData,
   icebergData,
@@ -31,6 +33,8 @@ function AntarcticMap({
   vesselPosition,
   routeIsReplanned = false,
   displayMode = "sic",
+  selectedRouteIndex = 0,
+  onSelectRoute,
 }) {
   const mapRef = useRef(null);
   const containerRef = useRef(null);
@@ -333,7 +337,7 @@ function AntarcticMap({
   }, [icebergData, displayMode]);
 
   // ------------------------------------------------------------
-  // Navigation route
+  // Navigation routes (Multiple alternative routes)
   // ------------------------------------------------------------
 
   useEffect(() => {
@@ -345,77 +349,104 @@ function AntarcticMap({
 
     if (routeLayerRef.current) {
       map.removeLayer(routeLayerRef.current);
-
       routeLayerRef.current = null;
     }
 
-    if (
-      !routeData?.geometry?.coordinates ||
-      routeData.geometry.coordinates.length < 2
-    ) {
+    // Determine list of routes to display
+    const routeList = Array.isArray(routeData?.alternative_routes) && routeData.alternative_routes.length > 0
+      ? routeData.alternative_routes
+      : routeData
+        ? [routeData]
+        : [];
+
+    if (routeList.length === 0) {
       return;
     }
 
-    const coordinates = routeData.geometry.coordinates.map((point) => [
-      Number(point[1]),
-      Number(point[0]),
-    ]);
+    const layers = [];
+    let selectedBounds = null;
 
-    const route = L.polyline(coordinates, {
-      color: routeIsReplanned ? "#8e44ad" : "#0066ff",
-      weight: 5,
-      opacity: 0.95,
-      lineCap: "round",
-      lineJoin: "round",
+    routeList.forEach((rData, idx) => {
+      if (!rData?.geometry?.coordinates || rData.geometry.coordinates.length < 2) {
+        return;
+      }
+
+      const isSelected = idx === selectedRouteIndex;
+      const coordinates = rData.geometry.coordinates.map((point) => [
+        Number(point[1]),
+        Number(point[0]),
+      ]);
+
+      const baseColor = routeIsReplanned
+        ? "#8e44ad"
+        : ROUTE_COLORS[idx % ROUTE_COLORS.length];
+
+      const polyline = L.polyline(coordinates, {
+        color: baseColor,
+        weight: isSelected ? 6 : 3,
+        opacity: isSelected ? 0.95 : 0.45,
+        dashArray: isSelected ? null : "6, 6",
+        lineCap: "round",
+        lineJoin: "round",
+      });
+
+      const label = rData.route_name || (idx === 0 ? "Primary Route (Optimal)" : `Alternative ${idx}`);
+      polyline.bindTooltip(
+        `<b>${label}</b><br>Distance: ${rData.route?.distance_km} km<br>Cost: ${rData.route?.total_navigation_cost}`,
+        { sticky: true }
+      );
+
+      if (onSelectRoute) {
+        polyline.on("click", () => onSelectRoute(idx));
+      }
+
+      layers.push(polyline);
+
+      if (isSelected) {
+        selectedBounds = polyline.getBounds();
+
+        const start = L.circleMarker(coordinates[0], {
+          radius: 7,
+          color: "#ffffff",
+          weight: 2,
+          fillColor: baseColor,
+          fillOpacity: 1,
+        });
+        start.bindPopup(`<b>Start (${label})</b>`);
+        layers.push(start);
+
+        const destination = L.circleMarker(coordinates[coordinates.length - 1], {
+          radius: 7,
+          color: "#ffffff",
+          weight: 2,
+          fillColor: "#d73027",
+          fillOpacity: 1,
+        });
+        destination.bindPopup(`<b>Destination (${label})</b>`);
+        layers.push(destination);
+      }
     });
 
-    const start = L.circleMarker(coordinates[0], {
-      radius: 7,
-      color: "#ffffff",
-      weight: 2,
-      fillColor: "#0066ff",
-      fillOpacity: 1,
-    });
-
-    start.bindPopup("<b>Route Start</b>");
-
-    const destination = L.circleMarker(coordinates[coordinates.length - 1], {
-      radius: 7,
-      color: "#ffffff",
-      weight: 2,
-      fillColor: "#d73027",
-      fillOpacity: 1,
-    });
-
-    destination.bindPopup("<b>Destination</b>");
-
-    const routeGroup = L.layerGroup([route, start, destination]);
-
+    const routeGroup = L.layerGroup(layers);
     routeGroup.addTo(map);
-
     routeLayerRef.current = routeGroup;
 
-    console.log(
-      routeIsReplanned
-        ? "Displaying replanned route"
-        : "Displaying initial route",
-    );
-
-    map.fitBounds(route.getBounds(), {
-      padding: [50, 50],
-      maxZoom: 5,
-    });
+    if (selectedBounds) {
+      map.fitBounds(selectedBounds, {
+        padding: [50, 50],
+        maxZoom: 5,
+      });
+    }
 
     return () => {
       if (map.hasLayer(routeGroup)) {
         map.removeLayer(routeGroup);
       }
-
       if (routeLayerRef.current === routeGroup) {
         routeLayerRef.current = null;
       }
     };
-  }, [routeData, routeIsReplanned]);
+  }, [routeData, routeIsReplanned, selectedRouteIndex, onSelectRoute]);
 
   // ------------------------------------------------------------
   // Current vessel position

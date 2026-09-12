@@ -433,3 +433,71 @@ button {
 .route-summary .change-value {
   font-weight: 600;
 }
+
+/* ------------------------------------------------------------
+   Route Selector Cards
+------------------------------------------------------------ */
+
+.route-selector-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.route-card {
+  padding: 10px;
+  background: #091522;
+  border: 1px solid #1f3245;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.route-card:hover {
+  border-color: #3b5a77;
+  background: #0d1e30;
+}
+
+.route-card.active {
+  border-color: #0066ff;
+  background: #11263c;
+  box-shadow: 0 0 10px rgba(0, 102, 255, 0.2);
+}
+
+.route-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.route-badge {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.route-color-0 { background: #0066ff; }
+.route-color-1 { background: #00b894; }
+.route-color-2 { background: #e17055; }
+.route-color-3 { background: #6c5ce7; }
+
+.route-card-metrics {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #9db0c1;
+}
+
+.route-card-delta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed #1a2d3e;
+  font-size: 10px;
+  color: #f39c12;
+}
