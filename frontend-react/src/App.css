@@ -641,4 +641,78 @@ button {
   color: #e74c3c;
   background: rgba(231, 76, 60, 0.1);
   border: 1px solid rgba(231, 76, 60, 0.25);
+}
+
+/* ------------------------------------------------------------
+   Vessel Controls & Telemetry
+------------------------------------------------------------ */
+
+.vessel-control-group {
+  margin-bottom: 14px;
+}
+
+.rotation-button-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.rotate-btn {
+  flex: 1;
+  padding: 8px 10px;
+  background: #122436;
+  color: #00f0ff;
+  border: 1px solid #244360;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 12px;
+  transition: all 0.18s ease;
+}
+
+.rotate-btn:hover {
+  background: #1c3650;
+  border-color: #00f0ff;
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+}
+
+.speed-slider {
+  width: 100%;
+  accent-color: #00f0ff;
+  margin-top: 6px;
+  cursor: pointer;
+}
+
+.telemetry-box {
+  background: #091724;
+  border: 1px solid #1e3449;
+  border-radius: 6px;
+  padding: 10px;
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.status-badge.on-track {
+  background: rgba(46, 204, 113, 0.15);
+  color: #2ecc71;
+  border: 1px solid rgba(46, 204, 113, 0.3);
+}
+
+.status-badge.off-track {
+  background: rgba(231, 76, 60, 0.15);
+  color: #e74c3c;
+  border: 1px solid rgba(231, 76, 60, 0.3);
+}
+
+.vessel-ship-marker {
+  background: transparent;
+  border: none;
 }
