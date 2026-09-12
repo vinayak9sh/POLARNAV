@@ -16,7 +16,10 @@ import math
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
-
+from .fuel_optimization import (
+    DEFAULT_FUEL_PROFILE,
+    estimate_voyage,
+)
 from .module1_route import (
     build_route_result,
     find_least_cost_route,
@@ -234,7 +237,6 @@ def plan_multiple_routes(
         unpenalized_cost = recalculate_unpenalized_route_cost(
             cells, navigation_cost, blocked_cost=blocked_cost
         )
-
         res = build_route_result(
             cells, unpenalized_cost, spatial_output, spatial_output["xc"]
         )
@@ -243,10 +245,25 @@ def plan_multiple_routes(
         res["risk_score"] = risk_info["risk_score"]
         res["risk_level"] = risk_info["risk_level"]
         res["risk_details"] = risk_info
+
+        fuel_info = estimate_voyage(
+            distance_km=res["route"]["distance_km"],
+            speed_knots=DEFAULT_FUEL_PROFILE.reference_speed_knots,
+            profile=DEFAULT_FUEL_PROFILE,
+            ice_penalty=1.0,
+        )
+
+        res["fuel"] = fuel_info
+        res["fuel_cost_usd"] = fuel_info["fuel_cost_usd"]
+        res["fuel_used_tons"] = fuel_info["fuel_used_tons"]
+
         res["grid_cells_list"] = cells
         res["tag"] = tag
-
-        res["requested_start"] = {"latitude": float(start_lat), "longitude": float(start_lon)}
+        res["requested_start"] = {
+            "latitude": float(start_lat),
+            "longitude": float(start_lon)
+        }
+        
         res["requested_destination"] = {"latitude": float(goal_lat), "longitude": float(goal_lon)}
         res["grid_start"] = {"row": int(start_grid[0]), "column": int(start_grid[1])}
         res["grid_goal"] = {"row": int(goal_grid[0]), "column": int(goal_grid[1])}
@@ -355,13 +372,23 @@ def plan_multiple_routes(
             + WEIGHT_DISTANCE * norm_d
         )
 
-    # Role Candidates Selection
-    safest_cand = min(eval_pool, key=lambda c: (c["risk_score"], c["route"]["total_navigation_cost"]))
-    efficient_cand = min(eval_pool, key=lambda c: (c["route"]["total_navigation_cost"], c["route"]["distance_km"]))
-    balanced_cand = min(eval_pool, key=lambda c: c["balanced_score"])
+        # Role Candidates Selection
+    safest_cand = min(
+        eval_pool,
+        key=lambda c: (c["risk_score"], c["route"]["total_navigation_cost"])
+    )
+
+    efficient_cand = min(
+        eval_pool,
+        key=lambda c: (c["fuel_cost_usd"], c["fuel_used_tons"])
+    )
+
+    balanced_cand = min(
+        eval_pool,
+        key=lambda c: c["balanced_score"]
+    )
 
     selected_routes: List[Dict[str, Any]] = []
-
     if safest_cand is not efficient_cand and safest_cand is not balanced_cand and efficient_cand is not balanced_cand:
         # 3 distinct winners!
         safest_cand["label"] = "Safest"
@@ -456,11 +483,12 @@ def plan_multiple_routes(
         r_cost = r["route"]["total_navigation_cost"]
         r_dist = r["route"]["distance_km"]
         r_risk = r["risk_score"]
-
         eff_cost = eff_ref["route"]["total_navigation_cost"]
         eff_dist = eff_ref["route"]["distance_km"]
+        eff_fuel = eff_ref["fuel_cost_usd"]
         safe_risk = safe_ref["risk_score"]
 
+        fuel_cost = r["fuel_cost_usd"]
         cost_delta_pct = round(((r_cost - eff_cost) / (eff_cost + 1e-6)) * 100, 1)
         dist_delta_pct = round(((r_dist - eff_dist) / (eff_dist + 1e-6)) * 100, 1)
         risk_delta_pct = round(((r_risk - safe_risk) / (safe_risk + 1e-6)) * 100, 1)
