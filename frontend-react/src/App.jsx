@@ -11,6 +11,20 @@ import {
   getForecastWindow,
 } from "./services/api";
 
+// Haversine distance (km) between two lat/lon points
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function getDistanceToRouteInKm(vesselPos, routeCoordinates) {
   if (!vesselPos || !routeCoordinates || routeCoordinates.length < 2) {
     return 0.0;
@@ -60,6 +74,7 @@ function getDistanceToRouteInKm(vesselPos, routeCoordinates) {
 }
 
 const OFF_TRACK_BUFFER_KM = 5;
+const ARRIVAL_THRESHOLD_KM = 8; // km – geographic arrival radius for the simulation
 
 function App() {
   const [forecastDate, setForecastDate] = useState("");
@@ -102,6 +117,20 @@ function App() {
   const [loadingIcebergs, setLoadingIcebergs] = useState(false);
 
   const [icebergError, setIcebergError] = useState(null);
+
+  // ── Voyage completion tracking ──────────────────────────────────────────────
+  const [voyageComplete, setVoyageComplete] = useState(false);
+  const [voyageStats, setVoyageStats] = useState(null);
+  const voyageStartTimeRef = useRef(null);       // wall-clock ms when voyage first moved
+  const voyageDistanceRef = useRef(0);           // accumulated km travelled
+  const voyageReplansRef = useRef(0);            // dynamic replan count
+  const prevPosRef = useRef(null);               // last position for step-Δdist calculation
+  const voyageCompleteRef = useRef(false);       // ref mirror so interval closure is always fresh
+  const voyageSessionRef = useRef(0);            // incremented on every new voyage / reset
+  const lastValidRiskRef = useRef({ score: null, level: null }); // last non-null risk from active route
+
+  // Track initial coords so "Plan New Voyage" can snap back to start
+  const initialStartRef = useRef({ lat: -59.93, lon: 49.89 });
 
   useEffect(() => {
     let cancelled = false;
@@ -245,8 +274,24 @@ function App() {
     setSelectedRouteIndex(0);
     setReplannedRouteData(null);
 
+    // Bump session ID so any in-flight replan from a previous voyage is ignored
+    voyageSessionRef.current += 1;
+
+    // Reset all voyage tracking state
+    setVoyageComplete(false);
+    setVoyageStats(null);
+    voyageStartTimeRef.current = null;
+    voyageDistanceRef.current = 0;
+    voyageReplansRef.current = 0;
+    prevPosRef.current = null;
+    voyageCompleteRef.current = false;
+    lastValidRiskRef.current = { score: null, level: null };
+
     const startLat = Number(document.getElementById("startLatitude").value);
     const startLon = Number(document.getElementById("startLongitude").value);
+
+    // Remember start so "Plan New Voyage" can snap back
+    initialStartRef.current = { lat: startLat, lon: startLon };
 
     try {
       const data = await calculateRoute({
@@ -307,6 +352,9 @@ function App() {
     const targetPos = pos || vesselPosition;
     if (!targetPos) return;
 
+    // Snapshot the session at request-time; discard if the voyage has since reset
+    const sessionAtCall = voyageSessionRef.current;
+
     setLoadingReplan(true);
     setReplanError(null);
 
@@ -343,11 +391,19 @@ function App() {
         category: category,
       });
 
+      // Only apply if we are still in the same voyage session
+      if (sessionAtCall !== voyageSessionRef.current) return;
+
       setReplannedRouteData(data);
+      voyageReplansRef.current += 1;
     } catch (error) {
-      setReplanError(error.message);
+      if (sessionAtCall === voyageSessionRef.current) {
+        setReplanError(error.message);
+      }
     } finally {
-      setLoadingReplan(false);
+      if (sessionAtCall === voyageSessionRef.current) {
+        setLoadingReplan(false);
+      }
     }
   }
 
@@ -355,11 +411,37 @@ function App() {
     return handleReplanRouteFromPos(vesselPosition);
   }
 
+  // Keep lastValidRiskRef up-to-date whenever the active route changes
+  useEffect(() => {
+    const activeR = replannedRouteData
+      ? replannedRouteData
+      : routeData?.alternative_routes
+        ? (routeData.alternative_routes[selectedRouteIndex] || routeData.alternative_routes[0])
+        : routeData;
+    if (!activeR) return;
+    const score = activeR?.risk_score ?? null;
+    const level = activeR?.risk_level ?? null;
+    if (score !== null && score !== 0) {
+      lastValidRiskRef.current = { score, level };
+    }
+  }, [routeData, replannedRouteData, selectedRouteIndex]);
+
   // Real-time movement effect: updates vessel position continuously along heading when speed > 0
   useEffect(() => {
     if (vesselSpeed <= 0 || !vesselPosition) return;
 
+    // Record voyage start time on first movement
+    if (!voyageStartTimeRef.current) {
+      voyageStartTimeRef.current = Date.now();
+    }
+
+    const destLat = Number(document.getElementById("destinationLatitude")?.value ?? NaN);
+    const destLon = Number(document.getElementById("destinationLongitude")?.value ?? NaN);
+    const hasValidDest = Number.isFinite(destLat) && Number.isFinite(destLon);
+
     const interval = setInterval(() => {
+      if (voyageCompleteRef.current) return;
+
       setVesselPosition((prevPos) => {
         if (!prevPos) return prevPos;
 
@@ -373,19 +455,65 @@ function App() {
         );
         const deltaLon = (stepDistKm / (111.0 * cosLat)) * Math.sin(rad);
 
-        return {
+        const newPos = {
           latitude: prevPos.latitude + deltaLat,
           longitude: prevPos.longitude + deltaLon,
         };
+
+        // Accumulate distance travelled
+        if (prevPosRef.current) {
+          const stepKm = haversineKm(
+            prevPosRef.current.latitude, prevPosRef.current.longitude,
+            newPos.latitude, newPos.longitude,
+          );
+          voyageDistanceRef.current += stepKm;
+        }
+        prevPosRef.current = newPos;
+
+        // Arrival check
+        if (hasValidDest) {
+          const distToDest = haversineKm(newPos.latitude, newPos.longitude, destLat, destLon);
+          if (distToDest <= ARRIVAL_THRESHOLD_KM && !voyageCompleteRef.current) {
+            voyageCompleteRef.current = true;
+            const elapsedMs = voyageStartTimeRef.current
+              ? Date.now() - voyageStartTimeRef.current
+              : 0;
+            // Use the last valid non-zero risk captured before arrival
+            const { score: riskScore, level: riskLevel } = lastValidRiskRef.current;
+            const activeR = routeData?.alternative_routes
+              ? (routeData.alternative_routes[selectedRouteIndex] || routeData.alternative_routes[0])
+              : routeData;
+            const plannedDistKm = activeR?.route?.distance_km ?? null;
+            setVoyageStats({
+              distanceTravelledKm: voyageDistanceRef.current,
+              plannedDistanceKm: plannedDistKm,
+              remainingKm: 0,          // Fix #1: always 0 at arrival
+              elapsedMs,
+              dynamicReplans: voyageReplansRef.current,
+              finalRiskScore: riskScore, // Fix #2: last valid non-zero risk
+              finalRiskLevel: riskLevel,
+              routeName: activeR?.label || activeR?.route_name || "Selected Route",
+              destLat,
+              destLon,
+            });
+            setVoyageComplete(true);
+            // Snap vessel to destination so map marker lands exactly there
+            return { latitude: destLat, longitude: destLon };
+          }
+        }
+
+        return newPos;
       });
     }, 100);
 
     return () => clearInterval(interval);
-  }, [vesselSpeed, vesselHeading, vesselPosition !== null]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vesselSpeed, vesselHeading, vesselPosition !== null, routeData, selectedRouteIndex]);
 
   // Off-track buffer monitoring effect: checks distance to route & triggers auto-replan if > OFF_TRACK_BUFFER_KM
   useEffect(() => {
-    if (!vesselPosition) return;
+    // Do not replan after arrival
+    if (!vesselPosition || voyageCompleteRef.current) return;
 
     const baseRoute = replannedRouteData || routeData;
     const activeR =
@@ -418,7 +546,28 @@ function App() {
     replannedRouteData,
     selectedRouteIndex,
     loadingReplan,
+    voyageComplete,   // re-evaluate when arrival is detected
   ]);
+
+
+  // "Plan New Voyage" performs a complete application page refresh
+  function handleDismissVoyage() {
+    window.location.reload();
+  }
+
+  // Format elapsed ms into h m s string
+  function formatElapsed(ms) {
+    if (!ms || ms <= 0) return "0s";
+    const totalSec = Math.floor(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    const parts = [];
+    if (h > 0) parts.push(`${h}h`);
+    if (m > 0) parts.push(`${m}m`);
+    parts.push(`${s}s`);
+    return parts.join(" ");
+  }
 
   return (
     <div className="app">
@@ -1044,6 +1193,65 @@ function App() {
           </div>
         </section>
       </main>
+
+      {/* ── Voyage Complete Modal ──────────────────────────────── */}
+      {voyageComplete && voyageStats && (
+        <div className="voyage-overlay" role="dialog" aria-modal="true" aria-label="Voyage Complete">
+          <div className="voyage-modal">
+            <div className="voyage-modal-header">
+              <span className="voyage-modal-icon">🏁</span>
+              <div>
+                <h2 className="voyage-modal-title">Destination Reached</h2>
+                <p className="voyage-modal-subtitle">{voyageStats.routeName}</p>
+              </div>
+            </div>
+
+            <div className="voyage-stats-grid">
+              <div className="voyage-stat-card">
+                <span className="voyage-stat-label">Distance Travelled</span>
+                <span className="voyage-stat-value">{voyageStats.distanceTravelledKm.toFixed(1)} <em>km</em></span>
+              </div>
+
+              <div className="voyage-stat-card">
+                <span className="voyage-stat-label">Planned Route</span>
+                <span className="voyage-stat-value">
+                  {voyageStats.plannedDistanceKm !== null ? `${voyageStats.plannedDistanceKm} km` : "—"}
+                </span>
+              </div>
+
+              <div className="voyage-stat-card">
+                <span className="voyage-stat-label">Remaining at Arrival</span>
+                <span className="voyage-stat-value voyage-stat-green">{voyageStats.remainingKm.toFixed(2)} <em>km</em></span>
+              </div>
+
+              <div className="voyage-stat-card">
+                <span className="voyage-stat-label">Voyage Duration</span>
+                <span className="voyage-stat-value">{formatElapsed(voyageStats.elapsedMs)}</span>
+              </div>
+
+              <div className="voyage-stat-card">
+                <span className="voyage-stat-label">Dynamic Reroutes</span>
+                <span className="voyage-stat-value">{voyageStats.dynamicReplans}</span>
+              </div>
+
+              <div className="voyage-stat-card">
+                <span className="voyage-stat-label">Final Risk Score</span>
+                <span className="voyage-stat-value">
+                  {voyageStats.finalRiskScore !== null
+                    ? <>{Number(voyageStats.finalRiskScore).toFixed(1)} <em>/ 100</em> &nbsp;<span className={`risk-badge risk-${(voyageStats.finalRiskLevel || "low").toLowerCase()}`}>{voyageStats.finalRiskLevel || "—"}</span></>
+                    : "—"}
+                </span>
+              </div>
+            </div>
+
+            <div className="voyage-modal-actions">
+              <button className="voyage-dismiss-btn" onClick={handleDismissVoyage}>
+                Plan New Voyage
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
