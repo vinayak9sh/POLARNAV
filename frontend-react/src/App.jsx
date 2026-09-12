@@ -1,5 +1,6 @@
 import "./App.css";
 import AntarcticMap from "./components/AntarcticMap";
+import NavigationGuidanceHUD from "./components/NavigationGuidanceHUD";
 import { useEffect, useState, useRef } from "react";
 import {
   getForecastGrid,
@@ -382,15 +383,17 @@ function App() {
     return () => clearInterval(interval);
   }, [vesselSpeed, vesselHeading, vesselPosition !== null]);
 
-  // Off-track buffer monitoring effect: checks distance to route & triggers auto-replan if > 50km
+  // Off-track buffer monitoring effect: checks distance to route & triggers auto-replan if > OFF_TRACK_BUFFER_KM
   useEffect(() => {
     if (!vesselPosition) return;
 
+    const baseRoute = replannedRouteData || routeData;
     const activeR =
-      replannedRouteData ||
-      (routeData?.alternative_routes
-        ? routeData.alternative_routes[selectedRouteIndex]
-        : routeData);
+      Array.isArray(baseRoute?.alternative_routes) &&
+      baseRoute.alternative_routes.length > 0
+        ? baseRoute.alternative_routes[selectedRouteIndex] ||
+          baseRoute.alternative_routes[0]
+        : baseRoute;
     const coords = activeR?.geometry?.coordinates || activeR?.coordinates;
 
     if (!coords || coords.length < 2) return;
@@ -970,6 +973,16 @@ function App() {
               onSelectRoute={setSelectedRouteIndex}
             />
           </div>
+
+          {/* Turn-by-Turn Navigation Guidance HUD (Top Right) */}
+          <NavigationGuidanceHUD
+            routeData={routeData}
+            replannedRouteData={replannedRouteData}
+            vesselPosition={vesselPosition}
+            vesselHeading={vesselHeading}
+            vesselSpeed={vesselSpeed}
+            selectedRouteIndex={selectedRouteIndex}
+          />
 
           {/* Decision panel */}
           <div className="decision-panel">
