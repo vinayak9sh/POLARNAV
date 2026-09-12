@@ -1,3 +1,5 @@
+# python -m uvicorn src.api:app --reload
+
 from pathlib import Path
 from urllib.request import urlopen
 import hashlib

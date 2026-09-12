@@ -11,6 +11,9 @@ from .module4_navigation import (
     plan_navigation_route,
     replan_navigation_route,
 )
+from .module1_multi_route import (
+    plan_multiple_routes,
+)
 from .module1_forecast import (
     forecast_sic,
     forecast_long_range_sic,
@@ -73,6 +76,7 @@ class RouteRequest(BaseModel):
     start_longitude: float
     destination_latitude: float
     destination_longitude: float
+    num_routes: int = 3
 
 
 class ReplanRequest(BaseModel):
@@ -959,127 +963,84 @@ def route(request: RouteRequest) -> Dict[str, Any]:
         }
 
         # --------------------------------------------------
-        # Module 4 — Initial route
+        # Multi-route Planning
         # --------------------------------------------------
-        result = plan_navigation_route(
-            start_latitude=request.start_latitude,
-            start_longitude=request.start_longitude,
-            destination_latitude=request.destination_latitude,
-            destination_longitude=request.destination_longitude,
+        routes = plan_multiple_routes(
+            start_lat=request.start_latitude,
+            start_lon=request.start_longitude,
+            goal_lat=request.destination_latitude,
+            goal_lon=request.destination_longitude,
             navigation_cost=navigation_cost,
-            spatial_output=spatial_output
+            spatial_output=spatial_output,
+            num_routes=request.num_routes
         )
 
-        # --------------------------------------------------
-        # Module 3 — Explain selected route
-        # --------------------------------------------------
-        route_coordinates = result.get(
-            "coordinates",
-            []
-        )
+        for route_res in routes:
+            # Module 3 — Explain decision along route
+            route_coordinates = route_res.get("coordinates", [])
+            route_grid_cells = []
 
-        route_grid_cells = []
+            for point in route_coordinates:
+                if not isinstance(point, dict):
+                    continue
 
-        for point in route_coordinates:
+                route_latitude = point.get("latitude")
+                route_longitude = point.get("longitude")
 
-            if not isinstance(point, dict):
-                continue
+                if route_latitude is None or route_longitude is None:
+                    continue
 
-            route_latitude = point.get(
-                "latitude"
-            )
-
-            route_longitude = point.get(
-                "longitude"
-            )
-
-            if (
-                route_latitude is None
-                or route_longitude is None
-            ):
-                continue
-
-            cell_distance = (
-                np.abs(
-                    forecast_result["latitude"]
-                    - float(route_latitude)
+                cell_distance = (
+                    np.abs(forecast_result["latitude"] - float(route_latitude))
+                    + np.abs(forecast_result["longitude"] - float(route_longitude))
                 )
-                +
-                np.abs(
-                    forecast_result["longitude"]
-                    - float(route_longitude)
+
+                nearest_cell = np.unravel_index(
+                    np.nanargmin(cell_distance),
+                    cell_distance.shape
                 )
-            )
+                route_grid_cells.append(nearest_cell)
 
-            nearest_cell = np.unravel_index(
-                np.nanargmin(cell_distance),
-                cell_distance.shape
-            )
+            if route_grid_cells:
+                route_res["decision"] = explain_route_decision(
+                    route_grid_cells,
+                    sea_ice_navigation_cost,
+                    iceberg_navigation_cost,
+                    iceberg_weight=1.0
+                )
 
-            route_grid_cells.append(
-                nearest_cell
-            )
+            # Metadata
+            route_res["forecast"] = {
+                "forecast_date": str(forecast_result["forecast_date"]),
+                "prediction_date": str(forecast_result["prediction_date"]),
+                "horizon_months": forecast_result.get("horizon_months"),
+                "method": forecast_result.get("method"),
+                "confidence": forecast_result.get("confidence"),
+                "uncertainty": forecast_result.get("uncertainty"),
+            }
 
-        if route_grid_cells:
+            route_res["vessel"] = {
+                "profile": request.vessel_profile
+            }
 
-            decision = explain_route_decision(
-                route_grid_cells,
-                sea_ice_navigation_cost,
-                iceberg_navigation_cost,
-                iceberg_weight=1.0
-            )
+            coverage = iceberg_coverage["coverage"]
+            route_res["iceberg"] = {
+                "total_tracks": coverage["total_tracks"],
+                "ml_predictions": coverage["ml_predictions"],
+                "persistence_estimates": coverage["persistence_estimates"],
+                "represented_tracks": coverage["represented_tracks"],
+                "excluded_tracks": coverage["excluded_tracks"],
+                "coverage_percent": coverage["coverage_percent"],
+                "influence_radius_km": 30.0,
+                "hard_avoid_radius_km": 5.0,
+                "max_penalty": 500.0
+            }
 
-            result["decision"] = decision
+        # Primary route is at top-level for 100% backward compatibility
+        primary_result = routes[0].copy()
+        primary_result["alternative_routes"] = routes
 
-        # --------------------------------------------------
-        # Forecast information
-        # --------------------------------------------------
-        result["forecast"] = {
-            "forecast_date": str(
-                forecast_result["forecast_date"]
-            ),
-            "prediction_date": str(
-                forecast_result["prediction_date"]
-            ),
-            "horizon_months": forecast_result.get(
-                "horizon_months"
-            ),
-            "method": forecast_result.get(
-                "method"
-            ),
-            "confidence": forecast_result.get(
-                "confidence"
-            ),
-            "uncertainty": forecast_result.get(
-                "uncertainty"
-            ),
-        }
-
-        # --------------------------------------------------
-        # Vessel information
-        # --------------------------------------------------
-        result["vessel"] = {
-            "profile": request.vessel_profile
-        }
-
-        # --------------------------------------------------
-        # Module 2 information
-        # --------------------------------------------------
-        coverage = iceberg_coverage["coverage"]
-
-        result["iceberg"] = {
-            "total_tracks": coverage["total_tracks"],
-            "ml_predictions": coverage["ml_predictions"],
-            "persistence_estimates": coverage["persistence_estimates"],
-            "represented_tracks": coverage["represented_tracks"],
-            "excluded_tracks": coverage["excluded_tracks"],
-            "coverage_percent": coverage["coverage_percent"],
-            "influence_radius_km": 30.0,
-            "hard_avoid_radius_km": 5.0,
-            "max_penalty": 500.0
-        }
-
-        return result
+        return primary_result
 
     except ValueError as exc:
 

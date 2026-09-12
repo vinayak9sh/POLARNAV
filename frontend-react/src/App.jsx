@@ -27,6 +27,8 @@ function App() {
 
   const [routeData, setRouteData] = useState(null);
 
+  const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
+
   const [loadingRoute, setLoadingRoute] = useState(false);
 
   const [routeError, setRouteError] = useState(null);
@@ -184,6 +186,8 @@ function App() {
   async function handleCalculateRoute() {
     setLoadingRoute(true);
     setRouteError(null);
+    setSelectedRouteIndex(0);
+    setReplannedRouteData(null);
 
     try {
       const data = await calculateRoute({
@@ -451,18 +455,102 @@ function App() {
               <div className="navigation-status">Route error: {routeError}</div>
             )}
 
+            {routeError && (
+              <div className="navigation-status">Route error: {routeError}</div>
+            )}
+
+            {routeData?.alternative_routes && routeData.alternative_routes.length > 0 && (
+              <div className="navigation-status">
+                <strong>Navigation Choice Matrix</strong>
+                <p style={{ margin: "4px 0 10px 0", color: "#8ea3b7", fontSize: "11px" }}>
+                  Select a route corridor to preview metrics and map path:
+                </p>
+                <div className="route-selector-cards">
+                  {routeData.alternative_routes.map((r, idx) => {
+                    const isSelected = selectedRouteIndex === idx;
+                    const cat = r.category || (idx === 0 ? "safest" : idx === 1 ? "efficient" : "balanced");
+                    const icon = cat.includes("safest") ? "🛡️" : cat.includes("efficient") ? "⚡" : "⚖️";
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`route-card ${isSelected ? "active" : ""} category-${cat}`}
+                        onClick={() => setSelectedRouteIndex(idx)}
+                      >
+                        <div className="route-card-header">
+                          <span className="route-card-icon">{icon}</span>
+                          <div style={{ flex: 1 }}>
+                            <strong className="route-card-title">{r.label || r.route_name}</strong>
+                            <div className="route-card-tagline">{r.tagline || "Navigation Choice"}</div>
+                          </div>
+                        </div>
+
+                        <div className="route-card-risk-summary">
+                          <span className="risk-score-label">
+                            <strong>Risk Score:</strong> {r.risk_score !== undefined ? Number(r.risk_score).toFixed(1) : "0.0"} / 100
+                          </span>
+                          <span className="risk-sep">·</span>
+                          <span className={`risk-badge risk-${(r.risk_level || "LOW").toLowerCase()}`}>
+                            {r.risk_level || "LOW"}
+                          </span>
+                        </div>
+
+                        <div className="route-card-metrics">
+                          <div className="metric-item">
+                            <span className="metric-label">Distance</span>
+                            <span className="metric-val">{r.route?.distance_km} km</span>
+                          </div>
+                          <div className="metric-item">
+                            <span className="metric-label">Nav Cost</span>
+                            <span className="metric-val">{r.route?.total_navigation_cost}</span>
+                          </div>
+                        </div>
+
+                        {r.best_for && (
+                          <div className="route-card-best-for">
+                            <strong>Best for:</strong> {r.best_for}
+                          </div>
+                        )}
+
+                        {r.tradeoffs && (
+                          <div className="route-card-tradeoffs">
+                            {r.tradeoffs.advantages?.map((adv, aIdx) => (
+                              <div key={`adv-${aIdx}`} className="tradeoff-pill advantage">
+                                + {adv}
+                              </div>
+                            ))}
+                            {r.tradeoffs.disadvantages?.map((dis, dIdx) => (
+                              <div key={`dis-${dIdx}`} className="tradeoff-pill disadvantage">
+                                - {dis}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {routeData && (
               <div className="navigation-status">
-                <strong>Route calculated</strong>
+                <strong>Selected Choice ({routeData.alternative_routes ? routeData.alternative_routes[selectedRouteIndex]?.label || routeData.alternative_routes[selectedRouteIndex]?.route_name || "Optimal" : "Primary"})</strong>
 
-                <div>
-                  Distance: {routeData.route.distance_km} km
-                </div>
-
-                <div>
-                  Navigation cost:{" "}
-                  {routeData.route.total_navigation_cost}
-                </div>
+                {(() => {
+                  const currentR = routeData.alternative_routes
+                    ? routeData.alternative_routes[selectedRouteIndex]
+                    : routeData;
+                  return (
+                    <>
+                      <div>Distance: {currentR.route.distance_km} km</div>
+                      <div>Navigation cost: {currentR.route.total_navigation_cost}</div>
+                      {currentR.risk_score !== undefined && (
+                        <div>Environmental Risk Score: {Number(currentR.risk_score).toFixed(1)} / 100 ({currentR.risk_level})</div>
+                      )}
+                    </>
+                  );
+                })()}
 
                 {routeData.forecast && (
                   <>
@@ -615,11 +703,19 @@ function App() {
 
             {routeData && (
               <div className="navigation-status route-summary">
-                <strong>Initial Route</strong>
+                {(() => {
+                  const activeR = replannedRouteData ||
+                    (routeData?.alternative_routes ? routeData.alternative_routes[selectedRouteIndex] : routeData);
+                  return (
+                    <>
+                      <strong>{replannedRouteData ? "Replanned Route" : activeR?.route_name || "Selected Route"}</strong>
 
-                <div>Distance: {routeData.route.distance_km} km</div>
+                      <div>Distance: {activeR.route.distance_km} km</div>
 
-                <div>Cost: {routeData.route.total_navigation_cost}</div>
+                      <div>Cost: {activeR.route.total_navigation_cost}</div>
+                    </>
+                  );
+                })()}
 
                 {replannedRouteData && (
                   <>
@@ -634,10 +730,7 @@ function App() {
                     <div>
                       Cost: {replannedRouteData.route.total_navigation_cost}
                     </div>
-                  </>
-                )}
-                {replannedRouteData && (
-                  <>
+
                     <hr />
 
                     <strong>Route Change</strong>
@@ -679,8 +772,11 @@ function App() {
                 <strong>Decision Intelligence</strong>
 
                 {(() => {
-                  const decision =
-                    replannedRouteData?.decision || routeData?.decision;
+                  const activeR = replannedRouteData ||
+                    (routeData?.alternative_routes ? routeData.alternative_routes[selectedRouteIndex] : routeData);
+                  const decision = activeR?.decision;
+
+                  if (!decision) return <div>No decision breakdown available.</div>;
 
                   const seaIceContribution =
                     decision.contribution_percent?.sea_ice ?? 0;
@@ -728,7 +824,7 @@ function App() {
                 : vesselPosition
                   ? "Vessel position updated. Ready to replan."
                   : routeData
-                    ? "Initial route calculated. Simulate vessel progress to enable dynamic replanning."
+                    ? "Initial route calculated. Select alternative corridors or simulate vessel progress."
                     : "Ready for route planning."}
             </div>
           </section>
@@ -744,6 +840,8 @@ function App() {
               vesselPosition={vesselPosition}
               routeIsReplanned={Boolean(replannedRouteData)}
               displayMode={displayMode}
+              selectedRouteIndex={selectedRouteIndex}
+              onSelectRoute={setSelectedRouteIndex}
             />
           </div>
 
@@ -757,7 +855,7 @@ function App() {
                 {replannedRouteData
                   ? "REPLANNED ROUTE"
                   : routeData
-                    ? "INITIAL ROUTE"
+                    ? (routeData.alternative_routes?.[selectedRouteIndex]?.route_name?.toUpperCase() || "PRIMARY ROUTE")
                     : "AWAITING ROUTE"}
               </strong>
             </div>
@@ -770,7 +868,7 @@ function App() {
                 {replannedRouteData
                   ? `${replannedRouteData.route.distance_km} km remaining`
                   : routeData
-                    ? `${routeData.route.distance_km} km`
+                    ? `${(routeData.alternative_routes?.[selectedRouteIndex] || routeData).route.distance_km} km`
                     : "—"}
               </strong>
             </div>
@@ -783,7 +881,7 @@ function App() {
                 {replannedRouteData
                   ? replannedRouteData.route.total_navigation_cost
                   : routeData
-                    ? routeData.route.total_navigation_cost
+                    ? (routeData.alternative_routes?.[selectedRouteIndex] || routeData).route.total_navigation_cost
                     : "—"}
               </strong>
             </div>
@@ -793,15 +891,15 @@ function App() {
               <span className="metric-label">Primary Factor</span>
 
               <strong>
-                {replannedRouteData?.decision || routeData?.decision
-                  ? (replannedRouteData?.decision || routeData?.decision)
-                      .dominant_hazard === "sea_ice"
+                {(() => {
+                  const activeDec = (replannedRouteData || (routeData?.alternative_routes?.[selectedRouteIndex] || routeData))?.decision;
+                  if (!activeDec) return "—";
+                  return activeDec.dominant_hazard === "sea_ice"
                     ? "Sea Ice"
-                    : (replannedRouteData?.decision || routeData?.decision)
-                          .dominant_hazard === "iceberg"
+                    : activeDec.dominant_hazard === "iceberg"
                       ? "Icebergs"
-                      : "Combined"
-                  : "—"}
+                      : "Combined";
+                })()}
               </strong>
             </div>
           </div>

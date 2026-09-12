@@ -58,7 +58,10 @@ export async function getIcebergList() {
 export async function calculateRoute(payload) {
   return request("/route", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      num_routes: 3,
+      ...payload,
+    }),
   })
 }
 
