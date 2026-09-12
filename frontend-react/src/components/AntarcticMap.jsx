@@ -390,9 +390,11 @@ function AntarcticMap({
         lineJoin: "round",
       });
 
-      const label = rData.route_name || (idx === 0 ? "Primary Route (Optimal)" : `Alternative ${idx}`);
+      const label = rData.label || rData.route_name || (idx === 0 ? "Primary Route (Optimal)" : `Alternative ${idx}`);
+      const tagline = rData.tagline ? `<br><i>${rData.tagline}</i>` : "";
+      const riskInfo = rData.risk_level ? `<br>Risk Level: ${rData.risk_level}` : "";
       polyline.bindTooltip(
-        `<b>${label}</b><br>Distance: ${rData.route?.distance_km} km<br>Cost: ${rData.route?.total_navigation_cost}`,
+        `<b>${label}</b>${tagline}<br>Distance: ${rData.route?.distance_km} km<br>Cost: ${rData.route?.total_navigation_cost}${riskInfo}`,
         { sticky: true }
       );
 

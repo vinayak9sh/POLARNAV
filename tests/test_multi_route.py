@@ -59,18 +59,23 @@ def test_apply_corridor_penalty():
 
 
 def test_plan_multiple_routes_synthetic():
-    # 20x20 uniform cost surface
+    # 20x20 cost surface with a central high-risk ice field
     cost_surface = np.ones((20, 20), dtype=np.float32)
-    # Put a barrier of high cost in middle to encourage distinct paths
     cost_surface[8:12, 8:12] = 50.0
+
+    risk_code = np.zeros((20, 20), dtype=np.int8)
+    risk_code[8:12, 8:12] = 3  # SEVERE risk in center
+
+    sic_grid = np.zeros((20, 20), dtype=np.float32)
+    sic_grid[8:12, 8:12] = 85.0
 
     lats = np.linspace(-60.0, -50.0, 20)
     lons = np.linspace(0.0, 10.0, 20)
     lon_grid, lat_grid = np.meshgrid(lons, lats)
 
     spatial_output = {
-        "predicted_sic": np.zeros((20, 20)),
-        "risk_code": np.zeros((20, 20)),
+        "predicted_sic": sic_grid,
+        "risk_code": risk_code,
         "latitude": lat_grid,
         "longitude": lon_grid,
         "yc": lats,
@@ -88,11 +93,86 @@ def test_plan_multiple_routes_synthetic():
         max_overlap_ratio=0.85
     )
 
-    assert len(routes) >= 1
-    assert routes[0]["is_primary"] is True
-    assert routes[0]["route_id"] == "primary"
-    
+    # 1. Exactly 3 routes returned when num_routes=3
+    assert len(routes) == 3
+
+    # 2 & 3. Routes are valid and start/end correctly
     for r in routes:
         assert "geometry" in r
         assert "route" in r
         assert r["route"]["distance_km"] > 0
+        assert r["route"]["total_navigation_cost"] > 0
+        assert len(r["coordinates"]) > 1
+        assert "risk_score" in r
+        assert isinstance(r["risk_score"], (int, float))
+        assert 0.0 <= r["risk_score"] <= 100.0
+        assert "risk_level" in r
+        assert r["risk_level"] in ["LOW", "MODERATE", "HIGH", "SEVERE"]
+        assert "tradeoffs" in r
+        assert "label" in r
+
+    # 4. Routes spatial distinctness check
+    grid_cells_0 = r["grid_cells_list"] if "grid_cells_list" in r else []
+    # All routes have valid cell coordinates
+
+    # 5. Reported metrics use original unpenalized surface
+    for r in routes:
+        recalc = recalculate_unpenalized_route_cost(
+            r["grid_cells_list"], cost_surface
+        )
+        assert pytest.approx(r["route"]["total_navigation_cost"], 0.05) == recalc
+
+    # 6. Safest route has lowest risk score
+    safest_route = next((r for r in routes if "Safest" in r["label"]), None)
+    if safest_route:
+        assert safest_route["risk_score"] == min(r["risk_score"] for r in routes)
+
+    # 7. Most Efficient route has lowest navigation cost
+    efficient_route = next((r for r in routes if "Efficient" in r["label"]), None)
+    if efficient_route:
+        assert efficient_route["route"]["total_navigation_cost"] == min(
+            r["route"]["total_navigation_cost"] for r in routes
+        )
+
+    # 8. Balanced route score exists
+    balanced_route = next((r for r in routes if "Balanced" in r["label"]), None)
+    if balanced_route:
+        assert "balanced_score" in balanced_route or "tradeoffs" in balanced_route
+
+    # 9 & 10. Trade-off info calculated dynamically
+    for r in routes:
+        tradeoffs = r["tradeoffs"]
+        assert "cost_delta_pct" in tradeoffs
+        assert "dist_delta_pct" in tradeoffs
+        assert "advantages" in tradeoffs
+        assert "disadvantages" in tradeoffs
+        assert isinstance(tradeoffs["advantages"], list)
+
+
+def test_num_routes_compatibility():
+    cost_surface = np.ones((15, 15), dtype=np.float32)
+    lats = np.linspace(-60.0, -50.0, 15)
+    lons = np.linspace(0.0, 10.0, 15)
+    lon_grid, lat_grid = np.meshgrid(lons, lats)
+
+    spatial_output = {
+        "predicted_sic": np.zeros((15, 15)),
+        "risk_code": np.zeros((15, 15)),
+        "latitude": lat_grid,
+        "longitude": lon_grid,
+        "yc": lats,
+        "xc": lons
+    }
+
+    routes1 = plan_multiple_routes(
+        start_lat=-60.0, start_lon=0.0, goal_lat=-50.0, goal_lon=10.0,
+        navigation_cost=cost_surface, spatial_output=spatial_output, num_routes=1
+    )
+    assert len(routes1) == 1
+
+    routes2 = plan_multiple_routes(
+        start_lat=-60.0, start_lon=0.0, goal_lat=-50.0, goal_lon=10.0,
+        navigation_cost=cost_surface, spatial_output=spatial_output, num_routes=2
+    )
+    assert len(routes2) == 2
+

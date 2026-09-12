@@ -459,39 +459,71 @@ function App() {
               <div className="navigation-status">Route error: {routeError}</div>
             )}
 
-            {routeData?.alternative_routes && routeData.alternative_routes.length > 1 && (
+            {routeData?.alternative_routes && routeData.alternative_routes.length > 0 && (
               <div className="navigation-status">
-                <strong>Multiple Routes Generated</strong>
-                <p style={{ margin: "4px 0 8px 0", color: "#8ea3b7" }}>
+                <strong>Navigation Choice Matrix</strong>
+                <p style={{ margin: "4px 0 10px 0", color: "#8ea3b7", fontSize: "11px" }}>
                   Select a route corridor to preview metrics and map path:
                 </p>
                 <div className="route-selector-cards">
                   {routeData.alternative_routes.map((r, idx) => {
                     const isSelected = selectedRouteIndex === idx;
-                    const isPrimary = idx === 0;
-                    const primaryDist = routeData.alternative_routes[0].route.distance_km;
-                    const primaryCost = routeData.alternative_routes[0].route.total_navigation_cost;
-                    const distDelta = r.route.distance_km - primaryDist;
-                    const costDelta = r.route.total_navigation_cost - primaryCost;
+                    const cat = r.category || (idx === 0 ? "safest" : idx === 1 ? "efficient" : "balanced");
+                    const icon = cat.includes("safest") ? "🛡️" : cat.includes("efficient") ? "⚡" : "⚖️";
 
                     return (
                       <div
                         key={idx}
-                        className={`route-card ${isSelected ? "active" : ""}`}
+                        className={`route-card ${isSelected ? "active" : ""} category-${cat}`}
                         onClick={() => setSelectedRouteIndex(idx)}
                       >
                         <div className="route-card-header">
-                          <span className={`route-badge route-color-${idx}`}></span>
-                          <strong>{r.route_name || (isPrimary ? "Primary (Optimal)" : `Alternative ${idx}`)}</strong>
+                          <span className="route-card-icon">{icon}</span>
+                          <div style={{ flex: 1 }}>
+                            <strong className="route-card-title">{r.label || r.route_name}</strong>
+                            <div className="route-card-tagline">{r.tagline || "Navigation Choice"}</div>
+                          </div>
                         </div>
+
+                        <div className="route-card-risk-summary">
+                          <span className="risk-score-label">
+                            <strong>Risk Score:</strong> {r.risk_score !== undefined ? Number(r.risk_score).toFixed(1) : "0.0"} / 100
+                          </span>
+                          <span className="risk-sep">·</span>
+                          <span className={`risk-badge risk-${(r.risk_level || "LOW").toLowerCase()}`}>
+                            {r.risk_level || "LOW"}
+                          </span>
+                        </div>
+
                         <div className="route-card-metrics">
-                          <span>{r.route.distance_km} km</span>
-                          <span>Cost: {r.route.total_navigation_cost}</span>
+                          <div className="metric-item">
+                            <span className="metric-label">Distance</span>
+                            <span className="metric-val">{r.route?.distance_km} km</span>
+                          </div>
+                          <div className="metric-item">
+                            <span className="metric-label">Nav Cost</span>
+                            <span className="metric-val">{r.route?.total_navigation_cost}</span>
+                          </div>
                         </div>
-                        {!isPrimary && (
-                          <div className="route-card-delta">
-                            <span>{distDelta >= 0 ? `+${distDelta.toFixed(1)}` : distDelta.toFixed(1)} km</span>
-                            <span>{costDelta >= 0 ? `+${costDelta.toFixed(1)}` : costDelta.toFixed(1)} cost</span>
+
+                        {r.best_for && (
+                          <div className="route-card-best-for">
+                            <strong>Best for:</strong> {r.best_for}
+                          </div>
+                        )}
+
+                        {r.tradeoffs && (
+                          <div className="route-card-tradeoffs">
+                            {r.tradeoffs.advantages?.map((adv, aIdx) => (
+                              <div key={`adv-${aIdx}`} className="tradeoff-pill advantage">
+                                + {adv}
+                              </div>
+                            ))}
+                            {r.tradeoffs.disadvantages?.map((dis, dIdx) => (
+                              <div key={`dis-${dIdx}`} className="tradeoff-pill disadvantage">
+                                - {dis}
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
@@ -503,7 +535,7 @@ function App() {
 
             {routeData && (
               <div className="navigation-status">
-                <strong>Selected Route ({routeData.alternative_routes ? routeData.alternative_routes[selectedRouteIndex]?.route_name || "Optimal" : "Primary"})</strong>
+                <strong>Selected Choice ({routeData.alternative_routes ? routeData.alternative_routes[selectedRouteIndex]?.label || routeData.alternative_routes[selectedRouteIndex]?.route_name || "Optimal" : "Primary"})</strong>
 
                 {(() => {
                   const currentR = routeData.alternative_routes
@@ -513,6 +545,9 @@ function App() {
                     <>
                       <div>Distance: {currentR.route.distance_km} km</div>
                       <div>Navigation cost: {currentR.route.total_navigation_cost}</div>
+                      {currentR.risk_score !== undefined && (
+                        <div>Environmental Risk Score: {Number(currentR.risk_score).toFixed(1)} / 100 ({currentR.risk_level})</div>
+                      )}
                     </>
                   );
                 })()}
