@@ -23,6 +23,11 @@ from .module1_risk import classify_sic_risk
 from .module1_cost import create_navigation_cost
 from .vessel_profiles import create_vessel_cost_surface
 
+from .fuel_optimization import (
+    estimate_voyage,
+    DEFAULT_FUEL_PROFILE,
+)
+
 from .module2_trajectory import (
     predict_iceberg,
     list_icebergs,
@@ -152,7 +157,43 @@ except Exception as exc:
     RUNTIME_LOADED = False
     RUNTIME_ERROR = str(exc)
 
+def calculate_route_distance_km(coordinates):
+    """
+    Calculate total route distance from route coordinates.
+    Expects points containing latitude and longitude.
+    """
 
+    earth_radius_km = 6371.0
+    total_distance = 0.0
+
+    for i in range(len(coordinates) - 1):
+        lat1 = float(coordinates[i]["latitude"])
+        lon1 = float(coordinates[i]["longitude"])
+        lat2 = float(coordinates[i + 1]["latitude"])
+        lon2 = float(coordinates[i + 1]["longitude"])
+
+        lat1_rad = np.radians(lat1)
+        lat2_rad = np.radians(lat2)
+
+        dlat = np.radians(lat2 - lat1)
+        dlon = np.radians(lon2 - lon1)
+
+        a = (
+            np.sin(dlat / 2.0) ** 2
+            + np.cos(lat1_rad)
+            * np.cos(lat2_rad)
+            * np.sin(dlon / 2.0) ** 2
+        )
+
+        distance = (
+            2.0
+            * earth_radius_km
+            * np.arcsin(np.sqrt(a))
+        )
+
+        total_distance += float(distance)
+
+    return total_distance
 # --------------------------------------------------
 # Lightweight map grid
 # --------------------------------------------------
@@ -978,6 +1019,25 @@ def route(request: RouteRequest) -> Dict[str, Any]:
         for route_res in routes:
             # Module 3 — Explain decision along route
             route_coordinates = route_res.get("coordinates", [])
+            # --------------------------------------------------
+            # Fuel and cost estimation
+            # --------------------------------------------------
+
+            route_distance_km = float(
+                route_res["route"]["distance_km"]
+            )
+
+            fuel_profile = DEFAULT_FUEL_PROFILE
+
+            fuel_result = estimate_voyage(
+                distance_km=route_distance_km,
+                speed_knots=fuel_profile.reference_speed_knots,
+                profile=fuel_profile,
+                
+                ice_penalty=1.0,
+            )
+
+            route_res["fuel"] = fuel_result
             route_grid_cells = []
 
             for point in route_coordinates:
