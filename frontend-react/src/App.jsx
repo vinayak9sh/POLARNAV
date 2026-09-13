@@ -7,6 +7,7 @@ import {
   getLongRangeForecastGrid,
   getIcebergRiskGrid,
   calculateRoute,
+  estimateFuel,
   replanRoute,
   getForecastWindow,
 } from "./services/api";
@@ -76,6 +77,27 @@ function getDistanceToRouteInKm(vesselPos, routeCoordinates) {
 const OFF_TRACK_BUFFER_KM = 5;
 const ARRIVAL_THRESHOLD_KM = 8; // km – geographic arrival radius for the simulation
 
+const DEFAULT_FUEL_INPUTS = {
+  distance_km: 1936.4,
+  speed_knots: 14,
+  reference_power_kw: 10000,
+  sfoc_g_per_kwh: 190,
+  ice_penalty: 1,
+  fuel_price_usd_per_ton: 700,
+};
+
+const DEFAULT_FUEL_ESTIMATE = {
+  distance_km: 1936.4,
+  speed_knots: 14,
+  travel_time_hours: 74.68,
+  estimated_engine_power_kw: 10000,
+  sfoc_g_per_kwh: 190,
+  ice_penalty: 1,
+  fuel_used_tons: 141.899,
+  fuel_price_usd_per_ton: 700,
+  fuel_cost_usd: 99329.37,
+};
+
 function App() {
   const [forecastDate, setForecastDate] = useState("");
   const [forecastWindow, setForecastWindow] = useState(null);
@@ -98,6 +120,11 @@ function App() {
   const [loadingRoute, setLoadingRoute] = useState(false);
 
   const [routeError, setRouteError] = useState(null);
+
+  const [fuelInputs, setFuelInputs] = useState(DEFAULT_FUEL_INPUTS);
+  const [fuelEstimate, setFuelEstimate] = useState(DEFAULT_FUEL_ESTIMATE);
+  const [loadingFuelEstimate, setLoadingFuelEstimate] = useState(false);
+  const [fuelEstimateError, setFuelEstimateError] = useState(null);
 
   const [vesselPosition, setVesselPosition] = useState(null);
   const [vesselHeading, setVesselHeading] = useState(0);
@@ -267,6 +294,62 @@ function App() {
       cancelled = true;
     };
   }, [displayMode, forecastDate]);
+
+  function handleFuelInputChange(event) {
+    const { name, value } = event.target;
+    setFuelInputs((current) => ({ ...current, [name]: value }));
+  }
+
+  async function calculateFuelEstimate(inputs = fuelInputs) {
+    const payload = Object.fromEntries(
+      Object.entries(inputs).map(([key, value]) => [key, Number(value)]),
+    );
+
+    if (Object.values(payload).some((value) => !Number.isFinite(value))) {
+      setFuelEstimateError("Enter a valid number for every fuel assumption.");
+      return;
+    }
+
+    setLoadingFuelEstimate(true);
+    setFuelEstimateError(null);
+
+    try {
+      const data = await estimateFuel(payload);
+      setFuelEstimate(data.fuel ?? data);
+    } catch (error) {
+      setFuelEstimateError(error.message);
+    } finally {
+      setLoadingFuelEstimate(false);
+    }
+  }
+
+  function handleUseSelectedRouteDistance() {
+    const selectedRoute = routeData?.alternative_routes
+      ? routeData.alternative_routes[selectedRouteIndex]
+      : routeData;
+    const distanceKm = Number(selectedRoute?.route?.distance_km);
+
+    if (!Number.isFinite(distanceKm)) {
+      return;
+    }
+
+    const updatedInputs = {
+      ...fuelInputs,
+      distance_km: distanceKm,
+    };
+
+    setFuelInputs(updatedInputs);
+    calculateFuelEstimate(updatedInputs);
+  }
+
+  function formatFuelValue(value, maximumFractionDigits = 2) {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue)
+      ? numericValue.toLocaleString(undefined, {
+          maximumFractionDigits,
+        })
+      : "—";
+  }
 
   async function handleCalculateRoute() {
     setLoadingRoute(true);
@@ -903,6 +986,147 @@ function App() {
                 )}
               </div>
             )}
+          </section>
+
+          <section className="panel fuel-panel">
+            <h2>Fuel Optimisation</h2>
+            <p className="fuel-panel-intro">
+              Adjust the voyage and vessel assumptions to estimate fuel use and cost.
+            </p>
+
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                calculateFuelEstimate();
+              }}
+            >
+              <div className="fuel-input-grid">
+                <label htmlFor="fuelDistance">
+                  Distance <span>km</span>
+                  <input
+                    id="fuelDistance"
+                    name="distance_km"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={fuelInputs.distance_km}
+                    onChange={handleFuelInputChange}
+                  />
+                </label>
+
+                <label htmlFor="fuelSpeed">
+                  Speed <span>knots</span>
+                  <input
+                    id="fuelSpeed"
+                    name="speed_knots"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={fuelInputs.speed_knots}
+                    onChange={handleFuelInputChange}
+                  />
+                </label>
+
+                <label htmlFor="fuelReferencePower">
+                  Reference power <span>kW</span>
+                  <input
+                    id="fuelReferencePower"
+                    name="reference_power_kw"
+                    type="number"
+                    min="0.1"
+                    step="100"
+                    value={fuelInputs.reference_power_kw}
+                    onChange={handleFuelInputChange}
+                  />
+                </label>
+
+                <label htmlFor="fuelSfoc">
+                  SFOC <span>g/kWh</span>
+                  <input
+                    id="fuelSfoc"
+                    name="sfoc_g_per_kwh"
+                    type="number"
+                    min="0.1"
+                    step="1"
+                    value={fuelInputs.sfoc_g_per_kwh}
+                    onChange={handleFuelInputChange}
+                  />
+                </label>
+
+                <label htmlFor="fuelIcePenalty">
+                  Ice penalty <span>multiplier</span>
+                  <input
+                    id="fuelIcePenalty"
+                    name="ice_penalty"
+                    type="number"
+                    min="0.1"
+                    step="0.05"
+                    value={fuelInputs.ice_penalty}
+                    onChange={handleFuelInputChange}
+                  />
+                </label>
+
+                <label htmlFor="fuelPrice">
+                  Fuel price <span>USD/t</span>
+                  <input
+                    id="fuelPrice"
+                    name="fuel_price_usd_per_ton"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={fuelInputs.fuel_price_usd_per_ton}
+                    onChange={handleFuelInputChange}
+                  />
+                </label>
+              </div>
+
+              <div className="fuel-actions">
+                <button
+                  className="secondary-button fuel-route-distance-button"
+                  type="button"
+                  onClick={handleUseSelectedRouteDistance}
+                  disabled={!routeData}
+                >
+                  Use Selected Route Distance
+                </button>
+                <button
+                  className="primary-button fuel-calculate-button"
+                  type="submit"
+                  disabled={loadingFuelEstimate}
+                >
+                  {loadingFuelEstimate ? "Updating estimate..." : "Update Fuel Estimate"}
+                </button>
+              </div>
+            </form>
+
+            {fuelEstimateError && (
+              <div className="navigation-status fuel-error">
+                Fuel estimate error: {fuelEstimateError}
+              </div>
+            )}
+
+            <div className="fuel-results" aria-live="polite">
+              <div className="fuel-result-card">
+                <span>Travel time</span>
+                <strong>{formatFuelValue(fuelEstimate.travel_time_hours)} h</strong>
+              </div>
+              <div className="fuel-result-card">
+                <span>Engine power</span>
+                <strong>{formatFuelValue(fuelEstimate.estimated_engine_power_kw, 0)} kW</strong>
+              </div>
+              <div className="fuel-result-card fuel-used">
+                <span>Fuel used</span>
+                <strong>{formatFuelValue(fuelEstimate.fuel_used_tons, 3)} t</strong>
+              </div>
+              <div className="fuel-result-card fuel-cost">
+                <span>Fuel cost</span>
+                <strong>${formatFuelValue(fuelEstimate.fuel_cost_usd)}</strong>
+              </div>
+            </div>
+
+            <p className="fuel-model-note">
+              Uses the backend SFOC model. These are configurable planning assumptions, not operational limits.
+            </p>
           </section>
 
           {/* Environmental layers */}
