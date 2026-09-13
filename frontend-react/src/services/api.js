@@ -65,6 +65,13 @@ export async function calculateRoute(payload) {
   })
 }
 
+export async function estimateFuel(payload) {
+  return request("/fuel-estimate", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function replanRoute(payload) {
   return request("/replan", {
     method: "POST",

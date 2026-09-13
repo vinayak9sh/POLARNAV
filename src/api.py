@@ -23,6 +23,12 @@ from .module1_risk import classify_sic_risk
 from .module1_cost import create_navigation_cost
 from .vessel_profiles import create_vessel_cost_surface
 
+from .fuel_optimization import (
+    FuelProfile,
+    estimate_voyage,
+    DEFAULT_FUEL_PROFILE,
+)
+
 from .module2_trajectory import (
     predict_iceberg,
     list_icebergs,
@@ -87,7 +93,6 @@ class ReplanRequest(BaseModel):
     current_longitude: float
     destination_latitude: float
     destination_longitude: float
-    category: str = "safest"
 
 
 class ForecastRequest(BaseModel):
@@ -96,6 +101,20 @@ class ForecastRequest(BaseModel):
 class IcebergForecastRequest(BaseModel):
     iceberg_id: str
     forecast_date: str
+
+
+class FuelEstimateRequest(BaseModel):
+    """Editable vessel and fuel assumptions for a voyage estimate."""
+
+    distance_km: float
+    speed_knots: float = DEFAULT_FUEL_PROFILE.reference_speed_knots
+    reference_power_kw: float = DEFAULT_FUEL_PROFILE.reference_power_kw
+    sfoc_g_per_kwh: float = DEFAULT_FUEL_PROFILE.sfoc_g_per_kwh
+    ice_penalty: float = 1.0
+    fuel_price_usd_per_ton: float = (
+        DEFAULT_FUEL_PROFILE.fuel_price_usd_per_ton
+    )
+    speed_power: float = DEFAULT_FUEL_PROFILE.speed_power
 
 # --------------------------------------------------
 # Runtime data
@@ -153,7 +172,43 @@ except Exception as exc:
     RUNTIME_LOADED = False
     RUNTIME_ERROR = str(exc)
 
+def calculate_route_distance_km(coordinates):
+    """
+    Calculate total route distance from route coordinates.
+    Expects points containing latitude and longitude.
+    """
 
+    earth_radius_km = 6371.0
+    total_distance = 0.0
+
+    for i in range(len(coordinates) - 1):
+        lat1 = float(coordinates[i]["latitude"])
+        lon1 = float(coordinates[i]["longitude"])
+        lat2 = float(coordinates[i + 1]["latitude"])
+        lon2 = float(coordinates[i + 1]["longitude"])
+
+        lat1_rad = np.radians(lat1)
+        lat2_rad = np.radians(lat2)
+
+        dlat = np.radians(lat2 - lat1)
+        dlon = np.radians(lon2 - lon1)
+
+        a = (
+            np.sin(dlat / 2.0) ** 2
+            + np.cos(lat1_rad)
+            * np.cos(lat2_rad)
+            * np.sin(dlon / 2.0) ** 2
+        )
+
+        distance = (
+            2.0
+            * earth_radius_km
+            * np.arcsin(np.sqrt(a))
+        )
+
+        total_distance += float(distance)
+
+    return total_distance
 # --------------------------------------------------
 # Lightweight map grid
 # --------------------------------------------------
@@ -904,6 +959,42 @@ def forecast_grid(
 
 
 # --------------------------------------------------
+# Fuel optimisation
+# --------------------------------------------------
+
+@app.post("/fuel-estimate")
+def fuel_estimate(
+    request: FuelEstimateRequest,
+) -> Dict[str, Any]:
+    """Calculate fuel use and cost from editable voyage assumptions."""
+
+    try:
+        profile = FuelProfile(
+            sfoc_g_per_kwh=request.sfoc_g_per_kwh,
+            reference_power_kw=request.reference_power_kw,
+            reference_speed_knots=request.speed_knots,
+            fuel_price_usd_per_ton=request.fuel_price_usd_per_ton,
+            speed_power=request.speed_power,
+        )
+
+        return {
+            "status": "success",
+            "fuel": estimate_voyage(
+                distance_km=request.distance_km,
+                speed_knots=request.speed_knots,
+                profile=profile,
+                ice_penalty=request.ice_penalty,
+            ),
+        }
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+
+# --------------------------------------------------
 # Route
 # --------------------------------------------------
 
@@ -979,6 +1070,25 @@ def route(request: RouteRequest) -> Dict[str, Any]:
         for route_res in routes:
             # Module 3 — Explain decision along route
             route_coordinates = route_res.get("coordinates", [])
+            # --------------------------------------------------
+            # Fuel and cost estimation
+            # --------------------------------------------------
+
+            route_distance_km = float(
+                route_res["route"]["distance_km"]
+            )
+
+            fuel_profile = DEFAULT_FUEL_PROFILE
+
+            fuel_result = estimate_voyage(
+                distance_km=route_distance_km,
+                speed_knots=fuel_profile.reference_speed_knots,
+                profile=fuel_profile,
+                
+                ice_penalty=1.0,
+            )
+
+            route_res["fuel"] = fuel_result
             route_grid_cells = []
 
             for point in route_coordinates:
@@ -1122,8 +1232,7 @@ def replan(request: ReplanRequest) -> Dict[str, Any]:
             destination_latitude=request.destination_latitude,
             destination_longitude=request.destination_longitude,
             navigation_cost=navigation_cost,
-            spatial_output=spatial_output,
-            category=request.category
+            spatial_output=spatial_output
         )
 
                 # --------------------------------------------------
@@ -1254,4 +1363,3 @@ def replan(request: ReplanRequest) -> Dict[str, Any]:
             status_code=422,
             detail=str(exc)
         )
-

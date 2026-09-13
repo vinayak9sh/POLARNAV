@@ -538,6 +538,120 @@ button {
 }
 
 /* ------------------------------------------------------------
+   Fuel Optimisation
+------------------------------------------------------------ */
+.fuel-panel {
+  border-color: rgba(243, 156, 18, 0.28);
+}
+
+.fuel-panel h2::before {
+  background: var(--amber-efficient);
+  box-shadow: 0 0 8px var(--amber-efficient);
+}
+
+.fuel-panel-intro,
+.fuel-model-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.fuel-input-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 9px;
+  margin-top: 8px;
+}
+
+.fuel-input-grid label {
+  margin-top: 8px;
+}
+
+.fuel-input-grid label span {
+  color: var(--text-muted);
+  font-size: 9.5px;
+  font-weight: 500;
+  margin-left: 3px;
+}
+
+.fuel-input-grid input {
+  margin-top: 4px;
+  padding: 8px 9px;
+}
+
+.fuel-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.fuel-actions .primary-button,
+.fuel-actions .secondary-button {
+  margin-top: 0;
+  padding: 9px 10px;
+  font-size: 10.5px;
+}
+
+.fuel-route-distance-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.fuel-results {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.fuel-result-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px;
+  border: 1px solid rgba(56, 175, 233, 0.16);
+  border-radius: 7px;
+  background: rgba(4, 12, 20, 0.62);
+}
+
+.fuel-result-card span {
+  color: #718a9e;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.fuel-result-card strong {
+  overflow: hidden;
+  color: #dbeaf7;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fuel-result-card.fuel-used strong {
+  color: #f1c40f;
+}
+
+.fuel-result-card.fuel-cost strong {
+  color: #2ecc71;
+}
+
+.fuel-model-note {
+  margin-top: 10px;
+}
+
+.fuel-error {
+  border-color: rgba(231, 76, 60, 0.45);
+  color: #f3a5a5;
+}
+
+/* ------------------------------------------------------------
    Route Selector Cards & Decision Support UI
 ------------------------------------------------------------ */
 .route-selector-cards {
@@ -1200,11 +1314,12 @@ button {
 
 .nav-hud-telemetry-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
 .nav-telemetry-cell {
+  min-width: 0;
   background: rgba(4, 12, 22, 0.65);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 7px;
@@ -1212,6 +1327,10 @@ button {
   display: flex;
   flex-direction: column;
   gap: 3px;
+}
+
+.nav-telemetry-cell:first-child {
+  grid-column: 1 / -1;
 }
 
 .telemetry-label {
@@ -1227,9 +1346,8 @@ button {
   font-weight: 700;
   color: #dbe7f2;
   font-family: var(--font-mono);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .telemetry-val.on-course {
