@@ -575,14 +575,37 @@ function App() {
           Top navigation
       ------------------------------------------------ */}
       <header className="topbar">
-        <div>
-          <h1>Antarctic Navigation</h1>
-          <p>Predictive Maritime Decision Support</p>
+        <div className="topbar-brand">
+          <div className="brand-icon-wrap" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2L15 9H22L16.5 13.5L18.5 20.5L12 16L5.5 20.5L7.5 13.5L2 9H9L12 2Z" fill="url(#brandGrad)" />
+              <circle cx="12" cy="12" r="3" fill="#ffffff" />
+              <defs>
+                <linearGradient id="brandGrad" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#00f0ff" />
+                  <stop offset="1" stopColor="#0066ff" />
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <div>
+            <div className="brand-title-line">
+              <span className="brand-primary">POLARNAV</span>
+              <span className="brand-divider">/</span>
+              <h1 className="brand-subtitle-title">Antarctic Navigation</h1>
+            </div>
+            <p className="topbar-desc">Predictive Maritime Decision-Support System</p>
+          </div>
         </div>
 
         <div className="system-status">
-          <span className="status-dot"></span>
-          System Ready
+          <span className="status-pulse-ring">
+            <span className="status-dot"></span>
+          </span>
+          <div className="system-status-text">
+            <span className="status-label">SYSTEM READY</span>
+            <span className="status-detail">Predictive Engine Online</span>
+          </div>
         </div>
       </header>
 
@@ -1245,7 +1268,11 @@ function App() {
             </div>
 
             <div className="voyage-modal-actions">
-              <button className="voyage-dismiss-btn" onClick={handleDismissVoyage}>
+              <button
+                type="button"
+                className="voyage-dismiss-btn"
+                onMouseDown={() => window.location.reload()}
+              >
                 Plan New Voyage
               </button>
             </div>
